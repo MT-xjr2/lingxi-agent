@@ -1,0 +1,157 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ── 设计令牌：light 与 dark/midnight ───────────────────────────── */
+:root {
+  --bg: #f7f8fb;
+  --bg-elev: #ffffff;
+  --bg-soft: #eef0f6;
+  --line: rgba(15,18,24,0.08);
+  --line-strong: rgba(15,18,24,0.14);
+  --text: #181c28;
+  --text-soft: #5b6378;
+  --text-faint: #8c93a6;
+  --accent: #7c5cff;
+  --accent-soft: rgba(124,92,255,0.12);
+  --bubble-user: linear-gradient(135deg, #7c5cff 0%, #5e3df2 100%);
+  --bubble-assistant: #ffffff;
+  --thinking-bg: #f3efff;
+}
+
+[data-theme="dark"], [data-theme="midnight"] {
+  --bg: #0b0d12;
+  --bg-elev: #14171f;
+  --bg-soft: #1b1f2a;
+  --line: rgba(255,255,255,0.08);
+  --line-strong: rgba(255,255,255,0.14);
+  --text: #ecedf2;
+  --text-soft: #a6abbd;
+  --text-faint: #6c7388;
+  --accent: #9b85ff;
+  --accent-soft: rgba(155,133,255,0.16);
+  --bubble-user: linear-gradient(135deg, #7c5cff 0%, #4f2bd1 100%);
+  --bubble-assistant: #181c28;
+  --thinking-bg: rgba(124,92,255,0.10);
+}
+
+html, body, #root { height: 100%; }
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font-family: ui-sans-serif, system-ui, -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* macOS 自定义标题栏可拖拽区域 */
+.app-drag { -webkit-app-region: drag; }
+.app-no-drag { -webkit-app-region: no-drag; }
+
+/* 滚动条 */
+.scrollable::-webkit-scrollbar { width: 8px; height: 8px; }
+.scrollable::-webkit-scrollbar-thumb { background: var(--line-strong); border-radius: 4px; }
+.scrollable::-webkit-scrollbar-thumb:hover { background: var(--text-faint); }
+
+/* 思考气流光带 */
+.thinking-shimmer {
+  background-image: linear-gradient(90deg, transparent 0%, var(--accent-soft) 40%, var(--accent-soft) 60%, transparent 100%);
+  background-size: 200% 100%;
+  animation: shimmer 2.4s linear infinite;
+}
+
+/* Markdown */
+.md-block p { margin: 0.5em 0; }
+.md-block h1, .md-block h2, .md-block h3 { margin: 0.8em 0 0.4em; font-weight: 600; }
+.md-block ul, .md-block ol { padding-left: 1.4em; margin: 0.4em 0; }
+.md-block code {
+  background: var(--bg-soft);
+  padding: 0.1em 0.35em;
+  border-radius: 4px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.9em;
+}
+.md-block pre {
+  background: var(--bg-soft);
+  border: 1px solid var(--line);
+  padding: 0.8em 1em;
+  border-radius: 8px;
+  overflow-x: auto;
+  margin: 0.6em 0;
+}
+.md-block pre code { background: transparent; padding: 0; }
+.md-block table { border-collapse: collapse; width: 100%; margin: 0.6em 0; }
+.md-block th, .md-block td { border: 1px solid var(--line); padding: 0.4em 0.6em; text-align: left; }
+.md-block a { color: var(--accent); text-decoration: underline; }
+
+/* Bubble */
+.user-bubble {
+  background: var(--bubble-user);
+  color: white;
+  border-radius: 18px 18px 4px 18px;
+  padding: 10px 14px;
+  max-width: 78%;
+  white-space: pre-wrap;
+  word-break: break-word;
+  box-shadow: 0 6px 24px rgba(124,92,255,0.18);
+}
+.assistant-bubble {
+  background: var(--bubble-assistant);
+  border: 1px solid var(--line);
+  border-radius: 18px 18px 18px 4px;
+  padding: 12px 16px;
+  max-width: 86%;
+  box-shadow: 0 1px 2px rgba(15,18,24,.04), 0 6px 24px rgba(15,18,24,.04);
+}
+[data-theme="dark"] .assistant-bubble, [data-theme="midnight"] .assistant-bubble {
+  box-shadow: 0 1px 2px rgba(0,0,0,.3), 0 6px 24px rgba(0,0,0,.2);
+}
+
+/* 通用卡片 */
+.surface {
+  background: var(--bg-elev);
+  border: 1px solid var(--line);
+  border-radius: 14px;
+}
+.surface-soft {
+  background: var(--bg-soft);
+  border-radius: 12px;
+}
+
+/* 输入区 */
+.composer {
+  background: var(--bg-elev);
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  box-shadow: 0 6px 30px rgba(15,18,24,.06);
+  transition: border-color .2s, box-shadow .2s;
+}
+.composer:focus-within {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 4px var(--accent-soft);
+}
+.composer textarea {
+  background: transparent;
+  border: none;
+  outline: none;
+  resize: none;
+  width: 100%;
+  color: var(--text);
+}
+.composer textarea::placeholder { color: var(--text-faint); }
+
+/* 状态点 */
+.dot {
+  width: 8px; height: 8px; border-radius: 50%;
+  display: inline-block;
+}
+.dot.live { background: var(--accent); animation: breathe 1.6s ease-in-out infinite; }
+.dot.done { background: #10b981; }
+
+/* 打字光标 */
+.caret::after {
+  content: '▍';
+  margin-left: 1px;
+  color: var(--accent);
+  animation: breathe 1s ease-in-out infinite;
+}

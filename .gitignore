@@ -1,0 +1,35 @@
+# Dependencies
+node_modules/
+frontend-desktop/dist/
+
+# Build output
+backend-desktop/smart-agent
+dist-electron/
+electron/resources/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+.DS_Store
+
+# Secrets - NEVER commit these
+ai-config/auth.json
+*.env
+.env.*
+
+# Database
+*.db
+*.db-wal
+*.db-shm
+
+# Logs
+*.log
+
+# npm
+npm-debug.log*
+.npm/
+
+# Temporary
+/tmp/

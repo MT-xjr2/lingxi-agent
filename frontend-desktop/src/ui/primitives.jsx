@@ -1,0 +1,138 @@
+import { clsx } from 'clsx';
+import { twMerge } from 'tailwind-merge';
+
+export function cn(...args) { return twMerge(clsx(args)); }
+
+export function Button({ className, variant = 'default', size = 'md', children, ...rest }) {
+  const variants = {
+    default: 'bg-accent text-white hover:bg-accent-600 active:bg-accent-700 shadow-soft',
+    ghost:   'bg-transparent text-[color:var(--text)] hover:bg-[color:var(--bg-soft)]',
+    outline: 'border border-[color:var(--line)] hover:bg-[color:var(--bg-soft)] text-[color:var(--text)]',
+    danger:  'bg-danger text-white hover:opacity-90',
+    soft:    'bg-[color:var(--accent-soft)] text-[color:var(--accent)] hover:bg-[color:var(--accent-soft)]/80',
+  };
+  const sizes = {
+    sm: 'h-7 px-2.5 text-xs rounded-md',
+    md: 'h-9 px-3.5 text-sm rounded-lg',
+    lg: 'h-11 px-5 text-base rounded-xl',
+    icon: 'h-9 w-9 rounded-lg flex items-center justify-center',
+  };
+  return (
+    <button
+      className={cn(
+        'inline-flex items-center justify-center gap-1.5 font-medium select-none transition active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed',
+        variants[variant], sizes[size], className,
+      )}
+      {...rest}
+    >{children}</button>
+  );
+}
+
+export function Input({ className, ...rest }) {
+  return (
+    <input
+      className={cn(
+        'h-9 px-3 rounded-lg w-full bg-[color:var(--bg-elev)] border border-[color:var(--line)]',
+        'text-[color:var(--text)] placeholder:text-[color:var(--text-faint)]',
+        'focus:outline-none focus:ring-2 focus:ring-[color:var(--accent)]/30 focus:border-[color:var(--accent)]',
+        className,
+      )}
+      {...rest}
+    />
+  );
+}
+
+export function Textarea({ className, ...rest }) {
+  return (
+    <textarea
+      className={cn(
+        'min-h-[80px] w-full rounded-lg px-3 py-2 bg-[color:var(--bg-elev)]',
+        'border border-[color:var(--line)] text-[color:var(--text)] placeholder:text-[color:var(--text-faint)]',
+        'focus:outline-none focus:ring-2 focus:ring-[color:var(--accent)]/30 focus:border-[color:var(--accent)]',
+        className,
+      )}
+      {...rest}
+    />
+  );
+}
+
+export function Select({ className, children, ...rest }) {
+  return (
+    <select
+      className={cn(
+        'h-9 px-3 rounded-lg bg-[color:var(--bg-elev)] border border-[color:var(--line)]',
+        'text-[color:var(--text)] focus:outline-none focus:ring-2 focus:ring-[color:var(--accent)]/30',
+        className,
+      )}
+      {...rest}
+    >{children}</select>
+  );
+}
+
+export function Badge({ className, tone = 'default', children }) {
+  const tones = {
+    default: 'bg-[color:var(--bg-soft)] text-[color:var(--text-soft)]',
+    accent:  'bg-[color:var(--accent-soft)] text-[color:var(--accent)]',
+    success: 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400',
+    warn:    'bg-amber-500/10 text-amber-600 dark:text-amber-400',
+    danger:  'bg-red-500/10 text-red-600 dark:text-red-400',
+  };
+  return (
+    <span className={cn('inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-xs font-medium', tones[tone], className)}>
+      {children}
+    </span>
+  );
+}
+
+export function Card({ className, children }) {
+  return <div className={cn('surface p-4', className)}>{children}</div>;
+}
+
+// Modal/Dialog 简单实现
+export function Modal({ open, onClose, title, footer, children, width = 520 }) {
+  if (!open) return null;
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm" onClick={onClose}>
+      <div
+        className="surface w-full mx-4 animate-rise"
+        style={{ maxWidth: width }}
+        onClick={(e) => e.stopPropagation()}
+      >
+        {title && (
+          <div className="px-5 py-3 border-b border-[color:var(--line)] flex items-center justify-between">
+            <div className="font-semibold">{title}</div>
+            <button className="text-[color:var(--text-faint)] hover:text-[color:var(--text)]" onClick={onClose}>✕</button>
+          </div>
+        )}
+        <div className="p-5">{children}</div>
+        {footer && <div className="px-5 py-3 border-t border-[color:var(--line)] flex justify-end gap-2">{footer}</div>}
+      </div>
+    </div>
+  );
+}
+
+// 简易 toast 容器
+export function ToastStack({ items }) {
+  return (
+    <div className="fixed top-4 right-4 z-50 flex flex-col gap-2">
+      {items.map((n) => (
+        <div key={n.id} className="surface px-4 py-3 shadow-soft animate-rise min-w-[260px]">
+          {n.title && <div className="font-medium">{n.title}</div>}
+          {n.body && <div className="text-sm text-[color:var(--text-soft)]">{n.body}</div>}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+export function Tooltip({ children, label }) {
+  return (
+    <span className="relative group inline-flex">
+      {children}
+      <span className="pointer-events-none absolute -top-9 left-1/2 -translate-x-1/2 whitespace-nowrap
+        bg-ink-900 text-white text-xs px-2 py-1 rounded opacity-0 group-hover:opacity-100 transition">
+        {label}
+      </span>
+    </span>
+  );
+}

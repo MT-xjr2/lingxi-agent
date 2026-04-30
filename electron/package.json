@@ -1,0 +1,83 @@
+{
+  "name": "lingxi-agent",
+  "version": "1.0.0",
+  "description": "灵犀 AI 助手",
+  "main": "main.js",
+  "private": true,
+  "scripts": {
+    "start": "electron .",
+    "pack": "electron-builder --dir",
+    "dist": "electron-builder",
+    "dist:mac": "electron-builder --mac --arm64"
+  },
+  "devDependencies": {
+    "electron": "^36.0.0",
+    "electron-builder": "^25.0.0"
+  },
+  "build": {
+    "appId": "com.lingxi.agent",
+    "productName": "灵犀",
+    "copyright": "Copyright © 2025 Lingxi Agent Contributors",
+    "directories": {
+      "output": "../dist-electron"
+    },
+    "files": [
+      "main.js",
+      "preload.js",
+      "assets/**"
+    ],
+    "extraResources": [
+      {
+        "from": "../backend-desktop/smart-agent",
+        "to": "smart-agent"
+      },
+      {
+        "from": "../frontend-desktop/dist",
+        "to": "frontend-dist",
+        "filter": ["**/*"]
+      },
+      {
+        "from": "resources/ai-engine",
+        "to": "ai-engine"
+      },
+      {
+        "from": "resources/node-bin",
+        "to": "node-bin"
+      },
+      {
+        "from": "../ai-config",
+        "to": "ai-config",
+        "filter": ["auth.json", "settings.json", "claude.json", "CLAUDE.md", "skills/**", ".claude/agents/**"]
+      }
+    ],
+    "mac": {
+      "category": "public.app-category.productivity",
+      "target": [
+        {
+          "target": "dmg",
+          "arch": ["arm64"]
+        },
+        {
+          "target": "zip",
+          "arch": ["arm64"]
+        }
+      ],
+      "icon": "assets/icon.icns",
+      "hardenedRuntime": true,
+      "gatekeeperAssess": false,
+      "entitlements": "assets/entitlements.mac.plist",
+      "entitlementsInherit": "assets/entitlements.mac.plist"
+    },
+    "dmg": {
+      "title": "灵犀",
+      "window": {
+        "width": 540,
+        "height": 380
+      },
+      "contents": [
+        { "x": 150, "y": 185, "type": "file" },
+        { "x": 390, "y": 185, "type": "link", "path": "/Applications" }
+      ]
+    }
+  }
+}
