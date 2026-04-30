@@ -76,6 +76,7 @@ export function Badge({ className, tone = 'default', children }) {
     success: 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400',
     warn:    'bg-amber-500/10 text-amber-600 dark:text-amber-400',
     danger:  'bg-red-500/10 text-red-600 dark:text-red-400',
+    info:    'bg-sky-500/10 text-sky-600 dark:text-sky-400',
   };
   return (
     <span className={cn('inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-xs font-medium', tones[tone], className)}>

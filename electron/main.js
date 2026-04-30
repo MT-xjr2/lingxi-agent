@@ -49,6 +49,29 @@ function getClaudeBin() {
   }
 }
 
+// ─── CCR (claude-code-router) 二进制 + 隔离目录 ──────────────────
+// 用于 OpenAI 协议的供应商：ccr 在本地 127.0.0.1:<port> 启一个
+// Anthropic 协议端点，把 OpenAI 请求转发给上游（DeepSeek/Qwen/Gemini 等）
+function getCcrBin() {
+  const resourcesDir = app.isPackaged
+    ? process.resourcesPath
+    : path.join(__dirname, 'resources');
+  const bundled = path.join(resourcesDir, 'ccr', 'ccr');
+  if (fs.existsSync(bundled)) {
+    try { fs.chmodSync(bundled, 0o755); } catch (e) {}
+    return bundled;
+  }
+  try {
+    return require('child_process').execSync('which ccr').toString().trim();
+  } catch {
+    return '';
+  }
+}
+
+function getCcrHome() {
+  return path.join(app.getPath('userData'), 'ccr-home');
+}
+
 // ─── 获取应用隔离 HOME 目录 ──────────────────────────────────────
 // AI 引擎通过 HOME 环境变量定位配置目录
 // 给它一个独立目录，完全不碰用户真实的 ~/.claude/
@@ -267,6 +290,9 @@ function startBackend() {
       HOME: appHome,
       // 内置 AI 引擎路径
       CLAUDE_BIN: claudeBin,
+      // CCR (OpenAI → Anthropic 路由) 二进制 + 隔离数据目录
+      CCR_BIN: getCcrBin(),
+      CCR_HOME: getCcrHome(),
       // 显式传入知识库和技能路径，避免 Go 自己拼路径时受 HOME 空格影响
       KB_PATH: kbPath,
       SKILLS_PATH: skillsPath,
@@ -425,11 +451,14 @@ async function pushActiveSecretToBackend(profileIdHint) {
     }
     await backendRequest('POST', '/api/runtime/active-secret', {
       id: active.id,
+      name: active.name,
       model: active.model,
       base_url: active.base_url,
       token,
+      protocol: active.provider_protocol || 'anthropic',
+      transformer: active.transformer || '',
     });
-    console.log('[electron] pushed active secret: id=', active.id, 'model=', active.model);
+    console.log('[electron] pushed active secret: id=', active.id, 'proto=', active.provider_protocol, 'model=', active.model);
   } catch (e) {
     console.error('[electron] pushActiveSecretToBackend error:', e.message);
   }

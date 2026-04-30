@@ -23,7 +23,7 @@
 
 ## Features
 
-- **Multi-Model Support** — Seamlessly switch between Anthropic, DashScope, DeepSeek, or any Anthropic-compatible API provider.
+- **Multi-Model Support** — Seamlessly switch between Anthropic-native providers and **any OpenAI-compatible provider** (DeepSeek, Qwen/DashScope, Doubao, GLM, Gemini, OpenRouter, Moonshot, Groq, Ollama, OpenAI, etc.) via a built-in routing layer.
 - **Secure Key Management** — API keys encrypted via macOS Keychain (`safeStorage`); plaintext never touches disk.
 - **Real-time Streaming** — WebSocket-based chat with live token-by-token streaming, thinking process, and tool invocation visualization.
 - **Usage Analytics** — Per-message token/cost tracking, daily/model aggregation charts, and upstream account quota queries.
@@ -146,12 +146,56 @@ After launching, go to **Settings → Models & Endpoints** to:
 
 ### Supported Providers
 
-| Provider | Protocol | Usage Query | Notes |
-|---------|----------|-------------|-------|
-| Anthropic Official | Anthropic | ❌ | Direct API access |
-| DashScope | Anthropic Compatible | ✅ | Alibaba Cloud Model Studio |
-| DeepSeek | Anthropic Compatible | ✅ | Balance query supported |
-| Custom | Anthropic Compatible | ⚙️ | Configure `usage_api_meta` |
+**Anthropic-native (direct connection):**
+
+| Provider | Usage Query | Notes |
+|---------|-------------|-------|
+| Anthropic Official | — | Direct API access |
+| DashScope (Anthropic) | ✓ | Alibaba Cloud Model Studio (Anthropic-compat URL) |
+| DeepSeek (Anthropic) | ✓ | DeepSeek's Anthropic-compatible endpoint |
+| Custom (Anthropic) | manual | Bring your own endpoint |
+
+**OpenAI-compatible (routed through built-in CCR):**
+
+| Provider | Default Model | Usage Query |
+|---------|---------------|-------------|
+| DeepSeek | `deepseek-chat` | ✓ |
+| Qwen / DashScope (OpenAI mode) | `qwen3-coder-plus` | ✓ |
+| Doubao / Volcengine | configurable | manual |
+| GLM / Z.ai | `glm-4.6` | manual |
+| Moonshot / Kimi | `kimi-k2-turbo-preview` | manual |
+| Google Gemini | `gemini-2.5-pro` | manual |
+| OpenRouter | `google/gemini-2.5-pro` | manual |
+| Groq | `llama-3.3-70b-versatile` | manual |
+| SiliconFlow | `deepseek-ai/DeepSeek-V3` | manual |
+| Ollama (local) | `qwen2.5-coder:14b` | — |
+| OpenAI Official | `gpt-4o` | manual |
+| Custom (OpenAI) | manual | manual |
+
+> When you activate an OpenAI-compatible profile, the app automatically launches a local proxy ([claude-code-router](https://github.com/musistudio/claude-code-router)) on `127.0.0.1:<random>` that translates Anthropic protocol ↔ OpenAI protocol in real-time. **Everything stays on your machine** — no third-party gateways involved.
+
+### Routing Layer (CCR)
+
+The bundled routing layer is the community-standard `@musistudio/claude-code-router`. It is automatically managed for you:
+
+```
+┌──────────────────┐   Anthropic    ┌─────────┐   OpenAI   ┌──────────────┐
+│ Claude CLI       │ ─────────────▶ │  CCR    │ ─────────▶ │ DeepSeek /   │
+│ (lingxi backend) │   stream-json  │ (local) │   stream   │ Qwen / GLM…  │
+└──────────────────┘                └─────────┘            └──────────────┘
+```
+
+- **Lifecycle**: spawned on demand when an OpenAI profile is activated; killed when switching back to an Anthropic profile.
+- **Isolation**: writes config and logs to `~/Library/Application Support/lingxi-agent/ccr-home/` only. Never touches `~/.claude-code-router/`.
+- **Configuration**: rendered automatically from your active profile (single-provider config). No manual editing required.
+- **Status**: surfaced via the green "路由层 已就绪" pill in the title bar.
+
+If you need to inspect or stop the routing layer manually:
+
+```bash
+curl http://127.0.0.1:23343/api/router/status
+curl -X POST http://127.0.0.1:23343/api/router/stop
+```
 
 ### Environment Variables
 
@@ -277,7 +321,7 @@ MIT License — see [LICENSE](LICENSE) for details.
 
 ## 功能特性
 
-- **多模型切换** — 一键切换 Anthropic 官方、DashScope（通义）、DeepSeek 或其他兼容 Anthropic 协议的供应商。
+- **多模型切换** — 既可直连 Anthropic 协议供应商，也可通过内置路由层接入 **任意 OpenAI 协议供应商**（DeepSeek / 千问 / 豆包 / GLM / Gemini / OpenRouter / Moonshot / Groq / Ollama / OpenAI 等）。
 - **安全密钥管理** — API 密钥通过 macOS 钥匙串（`safeStorage`）加密存储；明文永不落盘。
 - **实时流式对话** — 基于 WebSocket 的逐字符流式输出，可视化展示"深度思考"过程和"技能调用"。
 - **用量统计** — 每条消息显示 Token 用量/费用，支持按日/按模型聚合图表和上游账户额度查询。
@@ -361,12 +405,49 @@ npm start
 
 ### 支持的供应商
 
-| 供应商 | 协议 | 额度查询 | 说明 |
-|--------|------|---------|------|
-| Anthropic 官方 | Anthropic | ❌ | 直接 API 访问 |
-| DashScope | Anthropic 兼容 | ✅ | 阿里云模型服务 |
-| DeepSeek | Anthropic 兼容 | ✅ | 支持余额查询 |
-| 自定义 | Anthropic 兼容 | ⚙️ | 需配置 `usage_api_meta` |
+**Anthropic 协议（直连）：**
+
+| 供应商 | 额度查询 | 说明 |
+|--------|---------|------|
+| Anthropic 官方 | — | 直接 API |
+| DashScope (Anthropic) | ✓ | 阿里云模型服务 Anthropic 兼容端点 |
+| DeepSeek (Anthropic) | ✓ | DeepSeek 的 Anthropic 兼容端点 |
+| 自定义 (Anthropic) | 手动 | 自带端点 |
+
+**OpenAI 协议（经内置 CCR 路由层）：**
+
+| 供应商 | 默认模型 | 额度查询 |
+|--------|---------|---------|
+| DeepSeek | `deepseek-chat` | ✓ |
+| 千问 / DashScope（OpenAI 模式） | `qwen3-coder-plus` | ✓ |
+| 豆包 / 火山方舟 | 自配 | 手动 |
+| GLM / 智谱 | `glm-4.6` | 手动 |
+| Moonshot / Kimi | `kimi-k2-turbo-preview` | 手动 |
+| Google Gemini | `gemini-2.5-pro` | 手动 |
+| OpenRouter | `google/gemini-2.5-pro` | 手动 |
+| Groq | `llama-3.3-70b-versatile` | 手动 |
+| 硅基流动 | `deepseek-ai/DeepSeek-V3` | 手动 |
+| Ollama（本地） | `qwen2.5-coder:14b` | — |
+| OpenAI 官方 | `gpt-4o` | 手动 |
+| 自定义 (OpenAI) | 自配 | 手动 |
+
+> 激活 OpenAI 协议的接入点后，应用会自动在 `127.0.0.1:<随机端口>` 启动一个本地代理（[claude-code-router](https://github.com/musistudio/claude-code-router)），实时把 Anthropic 协议 ↔ OpenAI 协议进行双向翻译。**全程发生在本机**，不经过任何第三方网关。
+
+### 路由层（CCR）
+
+应用内置的路由层是社区标准 `@musistudio/claude-code-router`，全自动托管：
+
+- **生命周期**：激活 OpenAI 协议接入点时自动启动；切回 Anthropic 协议时自动停止。
+- **隔离**：配置 / 日志只写入 `~/Library/Application Support/lingxi-agent/ccr-home/`，绝不污染 `~/.claude-code-router/`。
+- **配置**：由当前激活档案自动渲染（单 provider 模式），无需手动编辑。
+- **状态**：标题栏的绿色「路由层 已就绪」徽章实时反映状态。
+
+排障接口：
+
+```bash
+curl http://127.0.0.1:23343/api/router/status
+curl -X POST http://127.0.0.1:23343/api/router/stop
+```
 
 ## 安全说明
 

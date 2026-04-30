@@ -34,7 +34,7 @@ export function ProfilesPage() {
         <div>
           <h1 className="text-xl font-semibold">模型与接入点</h1>
           <p className="text-sm text-[color:var(--text-soft)] mt-0.5">
-            支持 Anthropic 官方 / DashScope / DeepSeek 等兼容 Anthropic 协议的供应商
+            原生 Anthropic 协议直连，或经本地路由层（CCR）接入 DeepSeek / Qwen / Doubao / GLM / Gemini / OpenRouter / Ollama 等 OpenAI 协议供应商
           </p>
         </div>
         <Button onClick={() => setEditing({ __new: true })}>
@@ -60,9 +60,14 @@ export function ProfilesPage() {
                     <Cpu size={18} />
                   </div>
                   <div className="min-w-0">
-                    <div className="font-medium truncate flex items-center gap-2">
+                    <div className="font-medium truncate flex items-center gap-2 flex-wrap">
                       {p.name}
                       {p.is_active && <Badge tone="accent">激活</Badge>}
+                      {p.provider_protocol === 'openai' ? (
+                        <Badge tone="info">OpenAI · CCR 路由</Badge>
+                      ) : (
+                        <Badge tone="default">Anthropic · 直连</Badge>
+                      )}
                     </div>
                     <div className="text-xs text-[color:var(--text-faint)] truncate">
                       {p.provider_name || p.provider_code} · {p.model || '默认模型'}
@@ -117,12 +122,15 @@ function ProfileEditor({ providers, profile, onClose, onSaved }) {
   const [baseUrl, setBaseUrl] = useState(profile?.base_url || '');
   const [model, setModel] = useState(profile?.model || '');
   const [token, setToken] = useState('');
+  const [transformer, setTransformer] = useState(profile?.transformer || '');
+  const [showAdvanced, setShowAdvanced] = useState(!!profile?.transformer);
   const [saving, setSaving] = useState(false);
   const pushNotification = useStore((s) => s.pushNotification);
 
   const provider = providers.find((p) => p.id === providerId);
+  const isOpenAI = provider?.protocol === 'openai';
 
-  // 选 provider 时自动填默认值
+  // 选 provider 时自动填默认值（包括 transformer 推断）
   const onPickProvider = (id) => {
     setProviderId(id);
     const p = providers.find((x) => x.id === id);
@@ -130,6 +138,11 @@ function ProfileEditor({ providers, profile, onClose, onSaved }) {
       if (!baseUrl) setBaseUrl(p.default_base_url || '');
       if (!model) setModel(p.default_model || '');
       if (!name) setName(p.name);
+      // 从 provider.usage_api_meta 中读取建议 transformer
+      try {
+        const meta = JSON.parse(p.usage_api_meta || '{}');
+        if (meta.transformer && !transformer) setTransformer(meta.transformer);
+      } catch {}
     }
   };
 
@@ -152,6 +165,7 @@ function ProfileEditor({ providers, profile, onClose, onSaved }) {
         auth_token_cipher: cipher,
         auth_token_mask: mask,
         extra: '{}',
+        transformer: isOpenAI ? transformer : '',
       });
       // 若是当前激活档案且改了密钥，让 Electron 重推
       if (profile?.is_active && token) {
@@ -188,7 +202,11 @@ function ProfileEditor({ providers, profile, onClose, onSaved }) {
         </Field>
         <Field label="供应商">
           <Select value={providerId} onChange={(e) => onPickProvider(Number(e.target.value))}>
-            {providers.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+            {providers.map((p) => (
+              <option key={p.id} value={p.id}>
+                {p.name} {p.protocol === 'openai' ? '· OpenAI' : '· Anthropic'}
+              </option>
+            ))}
           </Select>
           {provider?.doc_url && (
             <button
@@ -199,8 +217,20 @@ function ProfileEditor({ providers, profile, onClose, onSaved }) {
             </button>
           )}
         </Field>
+        {isOpenAI && (
+          <div className="rounded-lg border border-[color:var(--line)] bg-[color:var(--bg-soft)] p-3 text-xs text-[color:var(--text-soft)] leading-relaxed">
+            该供应商为 <b>OpenAI 兼容协议</b>。激活后，本应用将自动启动本地路由层（claude-code-router）把
+            Anthropic 请求实时翻译为 OpenAI 格式后转发至 {provider?.name}，整个流程发生在你的电脑上，
+            不经过任何中间服务器。
+          </div>
+        )}
         <Field label="Base URL">
           <Input value={baseUrl} onChange={(e) => setBaseUrl(e.target.value)} placeholder={provider?.default_base_url || 'https://...'} />
+          {isOpenAI && (
+            <div className="mt-1 text-[11px] text-[color:var(--text-faint)]">
+              OpenAI 协议端点应包含 <code>/chat/completions</code> 路径
+            </div>
+          )}
         </Field>
         <Field label="模型">
           <Input value={model} onChange={(e) => setModel(e.target.value)} placeholder={provider?.default_model || ''} />
@@ -217,6 +247,31 @@ function ProfileEditor({ providers, profile, onClose, onSaved }) {
             <ShieldCheck size={12} /> 通过系统 Keychain 加密存储，仅本机可解
           </div>
         </Field>
+        {isOpenAI && (
+          <div>
+            <button
+              type="button"
+              onClick={() => setShowAdvanced((v) => !v)}
+              className="text-xs text-[color:var(--accent)] hover:underline"
+            >
+              {showAdvanced ? '收起' : '展开'} 高级选项
+            </button>
+            {showAdvanced && (
+              <div className="mt-2">
+                <Field label="Transformer (CCR)">
+                  <Input
+                    value={transformer}
+                    onChange={(e) => setTransformer(e.target.value)}
+                    placeholder="留空 = 自动；常用：deepseek / gemini / tooluse / openrouter"
+                  />
+                  <div className="mt-1 text-[11px] text-[color:var(--text-faint)]">
+                    针对个别供应商的请求适配器。不确定时留空，绝大多数供应商无需配置。
+                  </div>
+                </Field>
+              </div>
+            )}
+          </div>
+        )}
       </div>
     </Modal>
   );

@@ -2,6 +2,7 @@ import { useEffect } from 'react';
 import { useStore, initStore } from '../state/useStore';
 import { SidebarSessions } from './SidebarSessions';
 import { ModelSwitcher } from './ModelSwitcher';
+import { RouterPill } from './RouterPill';
 import { ChatView } from '../chat/ChatView';
 import { AgentStatePill } from '../chat/AgentStatePill';
 import { SettingsPage } from '../settings/SettingsPage';
@@ -37,7 +38,8 @@ export function AppShell() {
           <div className="text-sm font-semibold tracking-tight">灵犀</div>
           <div className="ml-3"><AgentStatePill /></div>
         </div>
-        <div className="app-no-drag flex items-center">
+        <div className="app-no-drag flex items-center gap-2">
+          <RouterPill />
           <ModelSwitcher />
         </div>
       </header>

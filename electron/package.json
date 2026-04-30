@@ -45,6 +45,10 @@
         "to": "node-bin"
       },
       {
+        "from": "resources/ccr",
+        "to": "ccr"
+      },
+      {
         "from": "../ai-config",
         "to": "ai-config",
         "filter": ["auth.json", "settings.json", "claude.json", "CLAUDE.md", "skills/**", ".claude/agents/**"]

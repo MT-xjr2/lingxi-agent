@@ -8,7 +8,7 @@ ELECTRON_DIR="$ROOT_DIR/electron"
 RESOURCES_DIR="$ELECTRON_DIR/resources"
 
 echo "========================================"
-echo "  灵犀 桌面客户端构建脚本 (Go + AI Engine)"
+echo "  灵犀 桌面客户端构建脚本 (Go + AI Engine + CCR Router)"
 echo "  目标平台: macOS arm64 (Apple Silicon)"
 echo "========================================"
 
@@ -93,6 +93,48 @@ WRAPPER_EOF
     fi
   done
 fi
+
+# ── 3.5 内置 CCR (claude-code-router)：OpenAI ↔ Anthropic 路由层 ──
+# 当用户激活 OpenAI 协议接入点（DeepSeek / Qwen / Gemini 等）时，
+# 后端会 spawn 这个 ccr 进程把 Anthropic 请求翻译为 OpenAI 格式。
+echo ""
+echo "▶ [3.5] 准备 CCR 路由层..."
+CCR_BUNDLE_DIR="$RESOURCES_DIR/ccr"
+mkdir -p "$CCR_BUNDLE_DIR"
+
+# 在子目录中执行 npm install，避免污染电子端 / 前端依赖树
+pushd "$CCR_BUNDLE_DIR" > /dev/null
+if [ ! -f package.json ]; then
+  cat > package.json <<EOF
+{
+  "name": "lingxi-ccr-bundle",
+  "version": "1.0.0",
+  "private": true,
+  "dependencies": {
+    "@musistudio/claude-code-router": "*"
+  }
+}
+EOF
+fi
+echo "  ▸ 安装 @musistudio/claude-code-router..."
+npm install --silent --no-package-lock --no-audit --no-fund || {
+  echo "  ⚠️  CCR 安装失败，OpenAI 协议供应商在打包后将不可用（用户仍可手动安装 ccr 后由后端自动发现）"
+}
+popd > /dev/null
+
+# 包装脚本：使用内置 node 运行 ccr CLI
+cat > "$CCR_BUNDLE_DIR/ccr" <<'EOF'
+#!/bin/bash
+DIR="$(cd "$(dirname "$0")" && pwd)"
+NODE_BIN="$DIR/../node-bin/node"
+CCR_CLI="$DIR/node_modules/@musistudio/claude-code-router/dist/cli.js"
+if [ ! -f "$CCR_CLI" ]; then
+  CCR_CLI="$DIR/node_modules/@musistudio/claude-code-router/cli.js"
+fi
+exec "$NODE_BIN" "$CCR_CLI" "$@"
+EOF
+chmod +x "$CCR_BUNDLE_DIR/ccr"
+echo "  ✓ CCR 路由层已就绪: $(du -sh "$CCR_BUNDLE_DIR" 2>/dev/null | cut -f1)"
 
 # ── 4. 内嵌 Node.js 二进制（claude CLI 运行时）────────────────────
 echo ""

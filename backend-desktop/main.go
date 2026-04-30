@@ -92,6 +92,10 @@ func main() {
 	// Electron 启动时下发激活档案明文 token
 	api.POST("/runtime/active-secret", handler.SetActiveSecret)
 
+	// CCR 路由层（OpenAI → Anthropic 转换代理）
+	api.GET("/router/status", handler.GetRouterStatus)
+	api.POST("/router/stop", handler.StopRouter)
+
 	r.NoRoute(func(c *gin.Context) {
 		if len(c.Request.URL.Path) >= 4 && c.Request.URL.Path[:4] == "/api" {
 			c.Status(http.StatusNotFound)

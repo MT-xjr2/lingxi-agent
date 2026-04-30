@@ -157,6 +157,8 @@ func migrate() {
 
 	// 列级迁移：messages.usage（保存每条消息的 token/cost 摘要）
 	addColumnIfMissing("messages", "usage", "TEXT NOT NULL DEFAULT ''")
+	// 列级迁移：api_profiles.transformer（CCR 路由层的 transformer 名称，留空表示自动）
+	addColumnIfMissing("api_profiles", "transformer", "TEXT NOT NULL DEFAULT ''")
 
 	seedBuiltinProviders()
 }
@@ -190,6 +192,7 @@ func addColumnIfMissing(table, column, def string) {
 func seedBuiltinProviders() {
 	type p struct{ code, name, protocol, baseURL, model, meta, doc string }
 	builtins := []p{
+		// ── Anthropic 协议（直连，不经过 CCR）─────────────────────────
 		{
 			code: "anthropic_official", name: "Anthropic Official", protocol: "anthropic",
 			baseURL: "", model: "claude-opus-4-5", meta: `{}`, doc: "https://docs.anthropic.com",
@@ -206,8 +209,80 @@ func seedBuiltinProviders() {
 			meta: `{"usage":{"endpoint":"https://api.deepseek.com/user/balance","auth_header":"Authorization","auth_prefix":"Bearer "}}`,
 			doc:  "https://platform.deepseek.com/",
 		},
+		// ── OpenAI 协议（经 CCR 路由）─────────────────────────────────
 		{
-			code: "custom", name: "Custom", protocol: "anthropic",
+			code: "deepseek_openai", name: "DeepSeek (OpenAI Compatible)", protocol: "openai",
+			baseURL: "https://api.deepseek.com/v1/chat/completions", model: "deepseek-chat",
+			meta: `{"transformer":"deepseek","usage":{"endpoint":"https://api.deepseek.com/user/balance","auth_header":"Authorization","auth_prefix":"Bearer "}}`,
+			doc:  "https://platform.deepseek.com/",
+		},
+		{
+			code: "qwen_openai", name: "Qwen / DashScope (OpenAI Compatible)", protocol: "openai",
+			baseURL: "https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions", model: "qwen3-coder-plus",
+			meta: `{"transformer":"","usage":{"endpoint":"https://dashscope.aliyuncs.com/api/v1/account/balance","auth_header":"Authorization","auth_prefix":"Bearer "}}`,
+			doc:  "https://help.aliyun.com/zh/model-studio/developer-reference/use-qwen-by-calling-api",
+		},
+		{
+			code: "doubao_openai", name: "Doubao / Volcengine (OpenAI Compatible)", protocol: "openai",
+			baseURL: "https://ark.cn-beijing.volces.com/api/v3/chat/completions", model: "",
+			meta: `{"transformer":""}`,
+			doc:  "https://www.volcengine.com/docs/82379",
+		},
+		{
+			code: "glm_openai", name: "GLM / Z.ai (OpenAI Compatible)", protocol: "openai",
+			baseURL: "https://open.bigmodel.cn/api/paas/v4/chat/completions", model: "glm-4.6",
+			meta: `{"transformer":""}`,
+			doc:  "https://open.bigmodel.cn/dev/api",
+		},
+		{
+			code: "moonshot_openai", name: "Moonshot / Kimi (OpenAI Compatible)", protocol: "openai",
+			baseURL: "https://api.moonshot.cn/v1/chat/completions", model: "kimi-k2-turbo-preview",
+			meta: `{"transformer":""}`,
+			doc:  "https://platform.moonshot.cn/docs",
+		},
+		{
+			code: "gemini_openai", name: "Google Gemini (OpenAI Compatible)", protocol: "openai",
+			baseURL: "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions", model: "gemini-2.5-pro",
+			meta: `{"transformer":"gemini"}`,
+			doc:  "https://ai.google.dev/gemini-api/docs/openai",
+		},
+		{
+			code: "openrouter_openai", name: "OpenRouter (OpenAI Compatible)", protocol: "openai",
+			baseURL: "https://openrouter.ai/api/v1/chat/completions", model: "google/gemini-2.5-pro",
+			meta: `{"transformer":""}`,
+			doc:  "https://openrouter.ai/docs",
+		},
+		{
+			code: "groq_openai", name: "Groq (OpenAI Compatible)", protocol: "openai",
+			baseURL: "https://api.groq.com/openai/v1/chat/completions", model: "llama-3.3-70b-versatile",
+			meta: `{"transformer":""}`,
+			doc:  "https://console.groq.com/docs",
+		},
+		{
+			code: "siliconflow_openai", name: "SiliconFlow (OpenAI Compatible)", protocol: "openai",
+			baseURL: "https://api.siliconflow.cn/v1/chat/completions", model: "deepseek-ai/DeepSeek-V3",
+			meta: `{"transformer":""}`,
+			doc:  "https://docs.siliconflow.cn/",
+		},
+		{
+			code: "ollama_openai", name: "Ollama (本地, OpenAI Compatible)", protocol: "openai",
+			baseURL: "http://127.0.0.1:11434/v1/chat/completions", model: "qwen2.5-coder:14b",
+			meta: `{"transformer":""}`,
+			doc:  "https://github.com/ollama/ollama",
+		},
+		{
+			code: "openai_official", name: "OpenAI Official", protocol: "openai",
+			baseURL: "https://api.openai.com/v1/chat/completions", model: "gpt-4o",
+			meta: `{"transformer":""}`,
+			doc:  "https://platform.openai.com/docs",
+		},
+		// ── 通用 ────────────────────────────────────────────────────
+		{
+			code: "custom_anthropic", name: "Custom (Anthropic)", protocol: "anthropic",
+			baseURL: "", model: "", meta: `{}`, doc: "",
+		},
+		{
+			code: "custom_openai", name: "Custom (OpenAI)", protocol: "openai",
 			baseURL: "", model: "", meta: `{}`, doc: "",
 		},
 	}
@@ -543,11 +618,13 @@ type APIProfile struct {
 	ProviderID       int64     `json:"provider_id"`
 	ProviderCode     string    `json:"provider_code,omitempty"`
 	ProviderName     string    `json:"provider_name,omitempty"`
+	ProviderProtocol string    `json:"provider_protocol,omitempty"`
 	BaseURL          string    `json:"base_url"`
 	Model            string    `json:"model"`
 	AuthTokenCipher  string    `json:"auth_token_cipher,omitempty"` // 仅 Electron 启动时读取
 	AuthTokenMask    string    `json:"auth_token_mask"`
 	Extra            string    `json:"extra"`
+	Transformer      string    `json:"transformer"`
 	IsActive         bool      `json:"is_active"`
 	CreatedAt        time.Time `json:"created_at"`
 	UpdatedAt        time.Time `json:"updated_at"`
@@ -588,8 +665,8 @@ func GetProvider(id int64) (*Provider, error) {
 
 func ListAPIProfiles(includeCipher bool) ([]APIProfile, error) {
 	rows, err := DB.Query(`
-		SELECT p.id, p.name, p.provider_id, COALESCE(pr.code,''), COALESCE(pr.name,''),
-		       p.base_url, p.model, p.auth_token_cipher, p.auth_token_mask, p.extra, p.is_active, p.created_at, p.updated_at
+		SELECT p.id, p.name, p.provider_id, COALESCE(pr.code,''), COALESCE(pr.name,''), COALESCE(pr.protocol,'anthropic'),
+		       p.base_url, p.model, p.auth_token_cipher, p.auth_token_mask, p.extra, p.transformer, p.is_active, p.created_at, p.updated_at
 		FROM api_profiles p LEFT JOIN providers pr ON pr.id=p.provider_id
 		ORDER BY p.is_active DESC, p.updated_at DESC`)
 	if err != nil {
@@ -600,8 +677,8 @@ func ListAPIProfiles(includeCipher bool) ([]APIProfile, error) {
 	for rows.Next() {
 		var ap APIProfile
 		var active int
-		if err := rows.Scan(&ap.ID, &ap.Name, &ap.ProviderID, &ap.ProviderCode, &ap.ProviderName,
-			&ap.BaseURL, &ap.Model, &ap.AuthTokenCipher, &ap.AuthTokenMask, &ap.Extra, &active, &ap.CreatedAt, &ap.UpdatedAt); err != nil {
+		if err := rows.Scan(&ap.ID, &ap.Name, &ap.ProviderID, &ap.ProviderCode, &ap.ProviderName, &ap.ProviderProtocol,
+			&ap.BaseURL, &ap.Model, &ap.AuthTokenCipher, &ap.AuthTokenMask, &ap.Extra, &ap.Transformer, &active, &ap.CreatedAt, &ap.UpdatedAt); err != nil {
 			continue
 		}
 		ap.IsActive = active == 1
@@ -617,12 +694,12 @@ func GetAPIProfile(id int64, includeCipher bool) (*APIProfile, error) {
 	var ap APIProfile
 	var active int
 	err := DB.QueryRow(`
-		SELECT p.id, p.name, p.provider_id, COALESCE(pr.code,''), COALESCE(pr.name,''),
-		       p.base_url, p.model, p.auth_token_cipher, p.auth_token_mask, p.extra, p.is_active, p.created_at, p.updated_at
+		SELECT p.id, p.name, p.provider_id, COALESCE(pr.code,''), COALESCE(pr.name,''), COALESCE(pr.protocol,'anthropic'),
+		       p.base_url, p.model, p.auth_token_cipher, p.auth_token_mask, p.extra, p.transformer, p.is_active, p.created_at, p.updated_at
 		FROM api_profiles p LEFT JOIN providers pr ON pr.id=p.provider_id
 		WHERE p.id=?`, id).
-		Scan(&ap.ID, &ap.Name, &ap.ProviderID, &ap.ProviderCode, &ap.ProviderName,
-			&ap.BaseURL, &ap.Model, &ap.AuthTokenCipher, &ap.AuthTokenMask, &ap.Extra, &active, &ap.CreatedAt, &ap.UpdatedAt)
+		Scan(&ap.ID, &ap.Name, &ap.ProviderID, &ap.ProviderCode, &ap.ProviderName, &ap.ProviderProtocol,
+			&ap.BaseURL, &ap.Model, &ap.AuthTokenCipher, &ap.AuthTokenMask, &ap.Extra, &ap.Transformer, &active, &ap.CreatedAt, &ap.UpdatedAt)
 	if err != nil {
 		return nil, err
 	}
@@ -646,16 +723,16 @@ func UpsertAPIProfile(ap *APIProfile) (int64, error) {
 		_, err := DB.Exec(`
 			UPDATE api_profiles SET
 				name=?, provider_id=?, base_url=?, model=?,
-				auth_token_cipher=?, auth_token_mask=?, extra=?, updated_at=CURRENT_TIMESTAMP
+				auth_token_cipher=?, auth_token_mask=?, extra=?, transformer=?, updated_at=CURRENT_TIMESTAMP
 			WHERE id=?`,
 			ap.Name, ap.ProviderID, ap.BaseURL, ap.Model,
-			ap.AuthTokenCipher, ap.AuthTokenMask, ap.Extra, ap.ID)
+			ap.AuthTokenCipher, ap.AuthTokenMask, ap.Extra, ap.Transformer, ap.ID)
 		return ap.ID, err
 	}
 	res, err := DB.Exec(`
-		INSERT INTO api_profiles (name, provider_id, base_url, model, auth_token_cipher, auth_token_mask, extra)
-		VALUES (?,?,?,?,?,?,?)`,
-		ap.Name, ap.ProviderID, ap.BaseURL, ap.Model, ap.AuthTokenCipher, ap.AuthTokenMask, ap.Extra)
+		INSERT INTO api_profiles (name, provider_id, base_url, model, auth_token_cipher, auth_token_mask, extra, transformer)
+		VALUES (?,?,?,?,?,?,?,?)`,
+		ap.Name, ap.ProviderID, ap.BaseURL, ap.Model, ap.AuthTokenCipher, ap.AuthTokenMask, ap.Extra, ap.Transformer)
 	if err != nil {
 		return 0, err
 	}

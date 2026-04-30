@@ -17,6 +17,7 @@ import (
 
 	"lingxi-agent/config"
 	"lingxi-agent/db"
+	"lingxi-agent/router"
 
 	"github.com/gin-gonic/gin"
 )
@@ -917,7 +918,7 @@ func buildClaudeEnv(cfg *config.Config) []string {
 	}
 
 	// 优先使用激活档案（运行时由 Electron 下发到内存）
-	_, rtModel, rtBaseURL, rtToken := activeRuntimeSnapshot()
+	rtID, rtName, rtModel, rtBaseURL, rtToken, rtProtocol, rtTransformer := activeProfileSnapshot()
 	authToken := rtToken
 	baseURL := rtBaseURL
 	modelEnv := rtModel
@@ -929,6 +930,28 @@ func buildClaudeEnv(cfg *config.Config) []string {
 	}
 	if modelEnv == "" {
 		modelEnv = cfg.Claude.ModelEnv
+	}
+
+	// 当激活档案为 openai 协议时，路由经本地 CCR 转 Anthropic
+	if rtProtocol == "openai" && rtToken != "" && rtBaseURL != "" && rtModel != "" {
+		ccrURL, err := router.EnsureRunning(router.Profile{
+			ID:          rtID,
+			Name:        rtName,
+			BaseURL:     rtBaseURL,
+			Model:       rtModel,
+			Token:       rtToken,
+			Transformer: rtTransformer,
+		})
+		if err != nil {
+			log.Printf("[chat] CCR EnsureRunning error: %v (fallback to direct env)", err)
+		} else {
+			baseURL = ccrURL
+			// CCR 内部已持有真实上游 token；这里只需占位符
+			authToken = "ccr-internal"
+		}
+	} else {
+		// 非 openai 协议时，确保 CCR 不在运行（节省资源）
+		router.Stop()
 	}
 
 	set("ANTHROPIC_AUTH_TOKEN", authToken)

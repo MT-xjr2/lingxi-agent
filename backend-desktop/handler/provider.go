@@ -24,11 +24,14 @@ import (
 // profile_changed WS 事件后再次下发新的明文。
 
 type activeProfileRuntime struct {
-	mu       sync.RWMutex
-	id       int64
-	model    string
-	baseURL  string
-	token    string // 明文，仅内存
+	mu          sync.RWMutex
+	id          int64
+	name        string
+	model       string
+	baseURL     string
+	token       string // 明文，仅内存
+	protocol    string // anthropic | openai
+	transformer string // 仅 openai 协议下使用
 }
 
 var activeRuntime activeProfileRuntime
@@ -36,10 +39,13 @@ var activeRuntime activeProfileRuntime
 // SetActiveSecret 由 Electron 通过 IPC HTTP 调用，下发当前激活档案明文
 func SetActiveSecret(c *gin.Context) {
 	var body struct {
-		ID      int64  `json:"id"`
-		Model   string `json:"model"`
-		BaseURL string `json:"base_url"`
-		Token   string `json:"token"`
+		ID          int64  `json:"id"`
+		Name        string `json:"name"`
+		Model       string `json:"model"`
+		BaseURL     string `json:"base_url"`
+		Token       string `json:"token"`
+		Protocol    string `json:"protocol"`
+		Transformer string `json:"transformer"`
 	}
 	if err := c.ShouldBindJSON(&body); err != nil {
 		c.Status(http.StatusBadRequest)
@@ -47,12 +53,15 @@ func SetActiveSecret(c *gin.Context) {
 	}
 	activeRuntime.mu.Lock()
 	activeRuntime.id = body.ID
+	activeRuntime.name = body.Name
 	activeRuntime.model = body.Model
 	activeRuntime.baseURL = body.BaseURL
 	activeRuntime.token = body.Token
+	activeRuntime.protocol = body.Protocol
+	activeRuntime.transformer = body.Transformer
 	activeRuntime.mu.Unlock()
-	log.Printf("[provider] active secret set: id=%d model=%s base=%s tokenLen=%d",
-		body.ID, body.Model, body.BaseURL, len(body.Token))
+	log.Printf("[provider] active secret set: id=%d proto=%s model=%s base=%s tokenLen=%d",
+		body.ID, body.Protocol, body.Model, body.BaseURL, len(body.Token))
 	c.JSON(http.StatusOK, gin.H{"ok": true})
 }
 
@@ -61,6 +70,14 @@ func activeRuntimeSnapshot() (id int64, model, baseURL, token string) {
 	activeRuntime.mu.RLock()
 	defer activeRuntime.mu.RUnlock()
 	return activeRuntime.id, activeRuntime.model, activeRuntime.baseURL, activeRuntime.token
+}
+
+// activeProfileSnapshot 返回完整的激活档案信息（含协议）
+func activeProfileSnapshot() (id int64, name, model, baseURL, token, protocol, transformer string) {
+	activeRuntime.mu.RLock()
+	defer activeRuntime.mu.RUnlock()
+	return activeRuntime.id, activeRuntime.name, activeRuntime.model, activeRuntime.baseURL,
+		activeRuntime.token, activeRuntime.protocol, activeRuntime.transformer
 }
 
 // ─── HTTP 接口 ───────────────────────────────────────────────────
@@ -98,6 +115,7 @@ func UpsertAPIProfile(c *gin.Context) {
 		AuthTokenCipher string `json:"auth_token_cipher"`
 		AuthTokenMask   string `json:"auth_token_mask"`
 		Extra           string `json:"extra"`
+		Transformer    string `json:"transformer"`
 	}
 	if err := c.ShouldBindJSON(&body); err != nil || body.Name == "" || body.ProviderID == 0 {
 		c.Status(http.StatusBadRequest)
@@ -125,6 +143,7 @@ func UpsertAPIProfile(c *gin.Context) {
 		AuthTokenCipher: body.AuthTokenCipher,
 		AuthTokenMask:   body.AuthTokenMask,
 		Extra:           body.Extra,
+		Transformer:     body.Transformer,
 	}
 	id, err := db.UpsertAPIProfile(ap)
 	if err != nil {
@@ -163,11 +182,13 @@ func ActivateAPIProfile(c *gin.Context) {
 	// 通知 Electron 重新下发明文
 	ap, _ := db.GetAPIProfile(id, false)
 	payload, _ := json.Marshal(map[string]interface{}{
-		"id":           id,
-		"name":         ap.Name,
-		"model":        ap.Model,
-		"base_url":     ap.BaseURL,
-		"provider_id":  ap.ProviderID,
+		"id":                      id,
+		"name":                    ap.Name,
+		"model":                   ap.Model,
+		"base_url":                ap.BaseURL,
+		"provider_id":             ap.ProviderID,
+		"protocol":                ap.ProviderProtocol,
+		"transformer":             ap.Transformer,
 		"requires_secret_refresh": true,
 	})
 	globalHub.BroadcastAll("profile_changed", string(payload))
