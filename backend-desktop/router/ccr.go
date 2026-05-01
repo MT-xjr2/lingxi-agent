@@ -88,6 +88,7 @@ type manager struct {
 	cancel    context.CancelFunc
 	port      int
 	profileID int64 // 当前 bridge 服务的 profile ID
+	configSig string
 	startedAt time.Time
 	lastErr   string
 	logTail   []string // 最近若干行 stdout/stderr
@@ -111,16 +112,18 @@ func EnsureRunning(p Profile) (string, error) {
 
 	mgr.mu.Lock()
 	defer mgr.mu.Unlock()
+	sig := profileSignature(p)
 
 	// 复用：进程仍在 + 健康
 	if mgr.cmd != nil && mgr.cmd.Process != nil && mgr.port > 0 && isAlive(mgr.cmd) && pingHealth(mgr.port, 200*time.Millisecond) {
-		if mgr.profileID != p.ID {
-			// 同进程切 profile：仅推新 config，不重启
+		if mgr.profileID != p.ID || mgr.configSig != sig {
+			// 同进程切 profile / 同 profile 修改配置：仅推新 config，不重启
 			if err := pushConfig(mgr.port, p); err != nil {
 				return "", fmt.Errorf("push config to running bridge: %w", err)
 			}
-			log.Printf("[router] reused bridge pid=%d port=%d, switched profile %d → %d", mgr.cmd.Process.Pid, mgr.port, mgr.profileID, p.ID)
+			log.Printf("[router] reused bridge pid=%d port=%d, updated profile %d → %d", mgr.cmd.Process.Pid, mgr.port, mgr.profileID, p.ID)
 			mgr.profileID = p.ID
+			mgr.configSig = sig
 		}
 		return fmt.Sprintf("http://127.0.0.1:%d", mgr.port), nil
 	}
@@ -149,6 +152,7 @@ func EnsureRunning(p Profile) (string, error) {
 		stopLocked()
 		return "", fmt.Errorf("push config to bridge: %w", err)
 	}
+	mgr.configSig = sig
 
 	return fmt.Sprintf("http://127.0.0.1:%d", port), nil
 }
@@ -258,6 +262,11 @@ func stopLocked() {
 	mgr.cancel = nil
 	mgr.port = 0
 	mgr.profileID = 0
+	mgr.configSig = ""
+}
+
+func profileSignature(p Profile) string {
+	return fmt.Sprintf("%d\x00%s\x00%s\x00%s\x00%s", p.ID, p.BaseURL, p.Model, p.Token, p.Transformer)
 }
 
 func pumpLog(tag string, r io.ReadCloser) {

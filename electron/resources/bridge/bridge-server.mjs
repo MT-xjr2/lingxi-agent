@@ -10,7 +10,8 @@
 
 import http from 'node:http'
 import {
-  translateBetweenProviders,
+  toUniversal,
+  fromUniversal,
   handleUniversalStreamRequest,
 } from 'llm-bridge'
 
@@ -52,6 +53,49 @@ function sendJSON(res, code, obj) {
 function sendError(res, code, msg, extra = {}) {
   log('error', code, msg, extra)
   sendJSON(res, code, { type: 'error', error: { type: 'bridge_error', message: msg, ...extra } })
+}
+
+// Anthropic 工具结果在 Claude Code 请求里通常是：
+//   role=user, content=[{ type:'tool_result', tool_use_id:'...' }]
+// OpenAI Chat Completions 标准要求工具结果必须是：
+//   role=tool, tool_call_id='...', content='...'
+// llm-bridge 的通用转换会保留原始 role=user，导致部分 OpenAI 兼容模型把工具结果当普通用户消息，
+// 从而破坏 “tool_use -> 执行工具 -> tool_result -> 继续推理” 的 Agent 闭环。
+function normalizeToolResultsForOpenAI(universal) {
+  if (!universal?.messages || !Array.isArray(universal.messages)) return universal
+
+  const normalized = []
+  for (const msg of universal.messages) {
+    const toolResults = (msg.content || []).filter((c) => c.type === 'tool_result' && c.tool_result)
+    if (msg.role !== 'user' || toolResults.length === 0) {
+      normalized.push(msg)
+      continue
+    }
+
+    const nonToolContent = (msg.content || []).filter((c) => c.type !== 'tool_result')
+    if (nonToolContent.length > 0) {
+      normalized.push({ ...msg, content: nonToolContent })
+    }
+
+    toolResults.forEach((content, idx) => {
+      const tr = content.tool_result || {}
+      normalized.push({
+        ...msg,
+        id: `${msg.id || 'tool_result'}_${idx}`,
+        role: 'tool',
+        content: [content],
+        metadata: {
+          ...(msg.metadata || {}),
+          tool_call_id: tr.tool_call_id || tr.metadata?.tool_use_id || '',
+          name: tr.name || '',
+          normalized_from_anthropic_tool_result: true,
+        },
+      })
+    })
+  }
+
+  universal.messages = normalized
+  return universal
 }
 
 // ─── 处理器 ───────────────────────────────────────────────────────
@@ -106,7 +150,8 @@ async function handleMessages(req, res) {
   // ── 1. Anthropic → OpenAI 请求体 ─────────────────────────────
   let openaiBody
   try {
-    openaiBody = translateBetweenProviders('anthropic', 'openai', inbound)
+    const universal = normalizeToolResultsForOpenAI(toUniversal('anthropic', inbound))
+    openaiBody = fromUniversal('openai', universal)
   } catch (e) {
     stats.errors += 1
     stats.lastErr = 'translate_request: ' + e.message

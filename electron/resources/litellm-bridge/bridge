@@ -1,0 +1,19 @@
+#!/bin/bash
+# 灵犀 LiteLLM Bridge 包装脚本
+# 由 Go 后端 router.EnsureRunning() 通过 BRIDGE_BIN 变量 spawn
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+# 优先使用打包内置 Python（build-desktop.sh 复制进来）
+PYTHON_BIN="${SCRIPT_DIR}/../python-bin/python3"
+if [ ! -x "$PYTHON_BIN" ]; then
+  PYTHON_BIN="$(which python3 2>/dev/null)"
+fi
+if [ -z "$PYTHON_BIN" ] || [ ! -x "$PYTHON_BIN" ]; then
+  echo "[litellm-bridge] ERROR: python3 not found in bundled path or system PATH" >&2
+  exit 1
+fi
+# 优先使用本地打包的 site-packages（pip install --target 安装）
+SITE_PKG="${SCRIPT_DIR}/site-packages"
+if [ -d "$SITE_PKG" ]; then
+  export PYTHONPATH="${SITE_PKG}:${PYTHONPATH:-}"
+fi
+exec "$PYTHON_BIN" "${SCRIPT_DIR}/bridge.py" "$@"

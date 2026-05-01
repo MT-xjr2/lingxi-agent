@@ -50,18 +50,33 @@ function getClaudeBin() {
 }
 
 // ─── Bridge 二进制 + 隔离目录 ────────────────────────────────────
-// 用于 OpenAI 协议的供应商：bridge 在本地 127.0.0.1:<port> 启一个
-// Anthropic 协议端点，使用 supermemoryai/llm-bridge 把 Anthropic 请求
-// 翻译成 OpenAI 转发给上游（DeepSeek/Qwen/Gemini 等），并把响应 SSE 翻译回来。
+// 用于非 Anthropic 协议的供应商：bridge 在本地 127.0.0.1:<port> 启一个
+// Anthropic 协议端点，把 Claude Code 的请求转发到用户配置的 OpenAI 兼容供应商，
+// 并把 OpenAI 流式响应实时翻译回 Anthropic SSE 返回给 Claude Code。
+//
+// 优先使用 litellm-bridge（Python，工具调用协议兼容性更稳定），
+// 不存在时回退到 Node llm-bridge。
 function getBridgeBin() {
   const resourcesDir = app.isPackaged
     ? process.resourcesPath
     : path.join(__dirname, 'resources');
-  const bundled = path.join(resourcesDir, 'bridge', 'bridge');
-  if (fs.existsSync(bundled)) {
-    try { fs.chmodSync(bundled, 0o755); } catch (e) {}
-    return bundled;
+
+  // 优先：LiteLLM Bridge（Python）
+  const litellmBridge = path.join(resourcesDir, 'litellm-bridge', 'bridge');
+  if (fs.existsSync(litellmBridge)) {
+    try { fs.chmodSync(litellmBridge, 0o755); } catch (e) {}
+    console.log('[electron] bridge: using litellm-bridge (Python)');
+    return litellmBridge;
   }
+
+  // 回退：Node llm-bridge
+  const nodeBridge = path.join(resourcesDir, 'bridge', 'bridge');
+  if (fs.existsSync(nodeBridge)) {
+    try { fs.chmodSync(nodeBridge, 0o755); } catch (e) {}
+    console.log('[electron] bridge: using node llm-bridge (fallback)');
+    return nodeBridge;
+  }
+
   return '';
 }
 

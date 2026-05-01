@@ -123,6 +123,35 @@ popd > /dev/null
 
 echo "  ✓ Bridge 路由层已就绪: $(du -sh "$BRIDGE_BUNDLE_DIR" 2>/dev/null | cut -f1)"
 
+# ── 3.6 准备 LiteLLM Bridge（Python，工具协议兼容性更稳）────────────
+echo ""
+echo "▶ [3.6] 准备 LiteLLM Bridge (Python)..."
+LITELLM_DIR="$RESOURCES_DIR/litellm-bridge"
+mkdir -p "$LITELLM_DIR"
+
+if [ ! -f "$LITELLM_DIR/bridge.py" ]; then
+  echo "  ✗ 缺少 $LITELLM_DIR/bridge.py (仓库不完整)" >&2
+  exit 1
+fi
+chmod +x "$LITELLM_DIR/bridge"
+
+PYTHON_BIN_FOR_BRIDGE="${PYTHON_BIN_FOR_BRIDGE:-$(which python3 2>/dev/null)}"
+if [ -z "$PYTHON_BIN_FOR_BRIDGE" ] || [ ! -x "$PYTHON_BIN_FOR_BRIDGE" ]; then
+  echo "  ⚠️  未找到 python3，跳过 litellm 打包安装（运行时将依赖系统 litellm）"
+else
+  SITE_PKG="$LITELLM_DIR/site-packages"
+  echo "  ▸ 安装 litellm 依赖到 site-packages (python: $PYTHON_BIN_FOR_BRIDGE)..."
+  if "$PYTHON_BIN_FOR_BRIDGE" -m pip install \
+      -r "$LITELLM_DIR/requirements.txt" \
+      --target "$SITE_PKG" \
+      --quiet \
+      --no-cache-dir; then
+    echo "  ✓ LiteLLM Bridge 已就绪: $(du -sh "$LITELLM_DIR" 2>/dev/null | cut -f1)"
+  else
+    echo "  ⚠️  litellm 安装失败（非致命；bridge 将尝试系统 litellm）"
+  fi
+fi
+
 # ── 4. 内嵌 Node.js 二进制（claude CLI 运行时）────────────────────
 echo ""
 echo "▶ [4/5] 准备 Node.js 运行时..."

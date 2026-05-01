@@ -49,6 +49,11 @@
         "to": "bridge"
       },
       {
+        "from": "resources/litellm-bridge",
+        "to": "litellm-bridge",
+        "filter": ["**/*", "!site-packages/.cache/**"]
+      },
+      {
         "from": "../ai-config",
         "to": "ai-config",
         "filter": ["auth.json", "settings.json", "claude.json", "CLAUDE.md", "skills/**", ".claude/agents/**"]

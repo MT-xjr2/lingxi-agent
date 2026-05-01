@@ -940,22 +940,36 @@ func buildClaudeEnv(cfg *config.Config) []string {
 		modelEnv = cfg.Claude.ModelEnv
 	}
 
-	// 当激活档案为 openai 协议时，路由经本地 bridge 转 Anthropic
-	if rtProtocol == "openai" && rtToken != "" && rtBaseURL != "" && rtModel != "" {
-		bridgeURL, err := router.EnsureRunning(router.Profile{
-			ID:          rtID,
-			Name:        rtName,
-			BaseURL:     rtBaseURL,
-			Model:       rtModel,
-			Token:       rtToken,
-			Transformer: rtTransformer,
-		})
-		if err != nil {
-			log.Printf("[chat] bridge EnsureRunning error: %v (fallback to direct env)", err)
+	// 当激活档案为 openai 协议时，Claude Code 必须只访问本地 bridge。
+	// bridge 再把 Anthropic 协议请求转发到用户配置的 OpenAI 兼容供应商，并实时转回 Anthropic SSE。
+	// 注意：这里故意不 fallback 到 rtBaseURL/cfg.BaseURL 直连，否则 Claude Code 会用 Anthropic 协议打到 OpenAI endpoint，
+	// 轻则请求失败，重则破坏 tool_use/tool_result 的 Agent 循环。
+	if rtProtocol == "openai" {
+		if rtToken == "" || rtBaseURL == "" || rtModel == "" {
+			log.Printf("[chat] openai profile incomplete, refuse direct upstream: id=%d baseSet=%t modelSet=%t tokenSet=%t", rtID, rtBaseURL != "", rtModel != "", rtToken != "")
+			baseURL = "http://127.0.0.1:1"
+			authToken = "bridge-profile-incomplete"
+			modelEnv = rtModel
 		} else {
-			baseURL = bridgeURL
-			// bridge 内部已持有真实上游 token；这里只需占位符
-			authToken = "bridge-internal"
+			bridgeURL, err := router.EnsureRunning(router.Profile{
+				ID:          rtID,
+				Name:        rtName,
+				BaseURL:     rtBaseURL,
+				Model:       rtModel,
+				Token:       rtToken,
+				Transformer: rtTransformer,
+			})
+			if err != nil {
+				log.Printf("[chat] bridge EnsureRunning error: %v (refuse direct upstream)", err)
+				baseURL = "http://127.0.0.1:1"
+				authToken = "bridge-unavailable"
+				modelEnv = rtModel
+			} else {
+				baseURL = bridgeURL
+				// bridge 内部已持有真实上游 token；这里只需占位符
+				authToken = "bridge-internal"
+				modelEnv = rtModel
+			}
 		}
 	} else {
 		// 非 openai 协议时，确保 bridge 不在运行（节省资源）

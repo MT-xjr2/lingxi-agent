@@ -13,6 +13,8 @@ electron/resources/node-bin/
 electron/resources/ccr/
 electron/resources/bridge/node_modules/
 electron/resources/bridge/package-lock.json
+# litellm-bridge 打包 Python 依赖目录（build-desktop.sh 生成）
+electron/resources/litellm-bridge/site-packages/
 
 # IDE
 .idea/

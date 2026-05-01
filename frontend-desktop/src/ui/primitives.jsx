@@ -5,9 +5,9 @@ export function cn(...args) { return twMerge(clsx(args)); }
 
 export function Button({ className, variant = 'default', size = 'md', children, ...rest }) {
   const variants = {
-    default: 'bg-accent text-white hover:bg-accent-600 active:bg-accent-700 shadow-soft',
+    default: 'bg-gradient-to-r from-[color:var(--accent)] to-[#5e8bff] text-white hover:shadow-[0_8px_24px_var(--accent-glow)] hover:-translate-y-px active:translate-y-0 shadow-soft',
     ghost:   'bg-transparent text-[color:var(--text)] hover:bg-[color:var(--bg-soft)]',
-    outline: 'border border-[color:var(--line)] hover:bg-[color:var(--bg-soft)] text-[color:var(--text)]',
+    outline: 'border border-[color:var(--line)] hover:border-[color:var(--accent)]/60 hover:bg-[color:var(--bg-soft)] text-[color:var(--text)]',
     danger:  'bg-danger text-white hover:opacity-90',
     soft:    'bg-[color:var(--accent-soft)] text-[color:var(--accent)] hover:bg-[color:var(--accent-soft)]/80',
   };

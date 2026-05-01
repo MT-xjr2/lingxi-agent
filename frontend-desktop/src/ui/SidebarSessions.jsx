@@ -18,7 +18,9 @@ export function SidebarSessions() {
     <div className="flex flex-col h-full p-3 gap-3">
       <button
         onClick={async () => { await createSession(); setView('chat'); }}
-        className="flex items-center gap-2 px-3 h-10 rounded-lg bg-[color:var(--accent)] text-white hover:bg-accent-600 transition shadow-soft"
+        className="flex items-center justify-center gap-2 px-3 h-10 rounded-lg text-white transition-all duration-200
+          bg-gradient-to-r from-[color:var(--accent)] to-[#5e8bff]
+          hover:shadow-[0_8px_24px_var(--accent-glow)] hover:-translate-y-px active:translate-y-0 active:scale-[0.99] shadow-soft"
       >
         <Plus size={16} /> 新对话
       </button>
@@ -49,10 +51,15 @@ function SessionItem({ session, active, onClick, onDelete }) {
     <div
       onClick={onClick}
       className={cn(
-        'group flex items-center gap-2 px-2.5 py-2 rounded-lg cursor-pointer transition',
-        active ? 'bg-[color:var(--accent-soft)] text-[color:var(--accent)]' : 'hover:bg-[color:var(--bg-soft)] text-[color:var(--text)]',
+        'group relative flex items-center gap-2 px-2.5 py-2 rounded-lg cursor-pointer transition-all duration-200',
+        active
+          ? 'bg-[color:var(--accent-soft)] text-[color:var(--accent)]'
+          : 'hover:bg-[color:var(--bg-soft)] text-[color:var(--text)] hover:translate-x-0.5',
       )}
     >
+      {active && (
+        <span className="absolute left-0 top-1.5 bottom-1.5 w-0.5 rounded-full bg-gradient-to-b from-[color:var(--accent)] to-[#5e8bff]" />
+      )}
       <MessageSquare size={14} className="shrink-0 opacity-70" />
       <div className="flex-1 min-w-0">
         <div className="text-sm truncate">{session.title || '新对话'}</div>
