@@ -2,7 +2,8 @@ import { useEffect, useState } from 'react';
 import { Network, Loader2, CircleAlert } from 'lucide-react';
 import { useStore } from '../state/useStore';
 import { api } from '../api/client';
-import { Badge, cn } from './primitives';
+import { Badge } from './primitives';
+import { cn } from './cn';
 
 // RouterPill 仅在激活档案为 OpenAI 协议时显示，反映 bridge 路由层运行状态
 export function RouterPill() {
@@ -12,10 +13,7 @@ export function RouterPill() {
   const isOpenAI = active?.provider_protocol === 'openai';
 
   useEffect(() => {
-    if (!isOpenAI) {
-      setStatus(null);
-      return;
-    }
+    if (!isOpenAI) return;
     let cancelled = false;
     const tick = async () => {
       try {

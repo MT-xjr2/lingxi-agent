@@ -1,7 +1,8 @@
 import { useState, useRef, useEffect } from 'react';
 import { ChevronDown, Cpu, Settings, Check } from 'lucide-react';
 import { useStore } from '../state/useStore';
-import { Badge, cn } from './primitives';
+import { Badge } from './primitives';
+import { cn } from './cn';
 
 export function ModelSwitcher() {
   const profiles = useStore((s) => s.profiles);

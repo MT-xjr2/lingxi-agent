@@ -157,6 +157,51 @@ func ListMessages(c *gin.Context) {
 	c.JSON(http.StatusOK, msgs)
 }
 
+// SearchMessages GET /api/messages/search?q=keyword
+func SearchMessages(c *gin.Context) {
+	q := c.Query("q")
+	if q == "" {
+		c.JSON(http.StatusOK, []interface{}{})
+		return
+	}
+
+	rows, err := db.DB.Query(`
+		SELECT m.id, m.session_id, m.role, m.content, COALESCE(m.usage,''), m.created_at,
+		       COALESCE(s.title,'') AS session_title
+		FROM messages m
+		LEFT JOIN sessions s ON s.id = m.session_id
+		WHERE m.content LIKE '%' || ? || '%'
+		ORDER BY m.created_at DESC
+		LIMIT 50
+	`, q)
+	if err != nil {
+		log.Printf("[search] query error: %v", err)
+		c.Status(http.StatusInternalServerError)
+		return
+	}
+	defer rows.Close()
+
+	type SearchResult struct {
+		ID           int64  `json:"id"`
+		SessionID    int64  `json:"session_id"`
+		Role         string `json:"role"`
+		Content      string `json:"content"`
+		Usage        string `json:"usage,omitempty"`
+		CreatedAt    string `json:"created_at"`
+		SessionTitle string `json:"session_title"`
+	}
+
+	results := make([]SearchResult, 0)
+	for rows.Next() {
+		var r SearchResult
+		if err := rows.Scan(&r.ID, &r.SessionID, &r.Role, &r.Content, &r.Usage, &r.CreatedAt, &r.SessionTitle); err != nil {
+			continue
+		}
+		results = append(results, r)
+	}
+	c.JSON(http.StatusOK, results)
+}
+
 func getClaudeSessionID(sessionID int64) string {
 	var cid string
 	_ = db.DB.QueryRow(`SELECT claude_session_id FROM sessions WHERE id=?`, sessionID).Scan(&cid)

@@ -1,10 +1,20 @@
 import { useState, useRef, useEffect } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
+import { motion, AnimatePresence } from 'framer-motion';
+import {
+  BookOpen, Upload, Trash2, Eye, Loader2, CheckCircle2, AlertCircle,
+  FileText, MessageCircle, BarChart3, X, FolderUp,
+} from 'lucide-react';
+import { Button, Card, Badge, Modal, Input, Select } from './ui/primitives';
+import { cn } from './ui/cn';
 
-const CATEGORY_LABELS = { docs: '文档', qa: '问答', data: '数据' };
-const CATEGORY_ICONS = { docs: '📄', qa: '💬', data: '📊' };
-const ALLOWED_EXTS = ['.md', '.txt', '.csv', '.tsv', '.json'];
+const CATEGORY_MAP = {
+  docs: { label: '文档', icon: FileText },
+  qa:   { label: '问答', icon: MessageCircle },
+  data: { label: '数据', icon: BarChart3 },
+};
+const ALLOWED_EXTS = ['.md', '.txt', '.csv', '.tsv', '.json', '.pdf', '.docx'];
 
 function formatSize(bytes) {
   if (bytes < 1024) return bytes + ' B';
@@ -22,110 +32,16 @@ function getExt(name) {
   return m ? m[0].toLowerCase() : '';
 }
 
-// ─── 知识库条目卡片 ───────────────────────────────────────────────
-function KnowledgeCard({ item, onDelete, onPreview }) {
-  const tags = parseTags(item.tags);
-  return (
-    <div className="kb-card">
-      <div className="kb-card-header">
-        <span className="kb-card-icon">{CATEGORY_ICONS[item.category] || '📄'}</span>
-        <div className="kb-card-info">
-          <div className="kb-card-title">{item.title}</div>
-          <div className="kb-card-meta">
-            <span className="kb-card-category">{CATEGORY_LABELS[item.category] || item.category}</span>
-            <span className="kb-card-size">{formatSize(item.size)}</span>
-            <span className="kb-card-date">
-              {new Date(item.created_at).toLocaleDateString('zh-CN')}
-            </span>
-          </div>
-        </div>
-        <div className="kb-card-actions">
-          <button className="kb-btn preview" onClick={() => onPreview(item)}>预览</button>
-          <button className="kb-btn delete" onClick={() => onDelete(item)}>删除</button>
-        </div>
-      </div>
-      {item.summary && (
-        <div className="kb-card-summary">{item.summary}</div>
-      )}
-      {tags.length > 0 && (
-        <div className="kb-card-tags">
-          {tags.map((t, i) => <span key={i} className="kb-tag">{t}</span>)}
-        </div>
-      )}
-    </div>
-  );
-}
-
-// ─── 预览弹窗 ────────────────────────────────────────────────────
-function PreviewModal({ item, onClose }) {
-  const [content, setContent] = useState('');
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    fetch(`/api/knowledge/${item.id}/preview`, { credentials: 'include' })
-      .then(r => r.json())
-      .then(data => { setContent(data.content || ''); setLoading(false); })
-      .catch(() => { setContent('加载失败'); setLoading(false); });
-  }, [item.id]);
-
-  return (
-    <div className="kb-modal-overlay" onClick={onClose}>
-      <div className="kb-modal" onClick={e => e.stopPropagation()}>
-        <div className="kb-modal-header">
-          <span className="kb-modal-title">{item.title}</span>
-          <button className="kb-modal-close" onClick={onClose}>✕</button>
-        </div>
-        <div className="kb-modal-body">
-          {loading ? (
-            <div className="kb-modal-loading">加载中...</div>
-          ) : (
-            <div className="kb-preview-content">
-              <ReactMarkdown remarkPlugins={[remarkGfm]}>{content}</ReactMarkdown>
-            </div>
-          )}
-        </div>
-      </div>
-    </div>
-  );
-}
-
-// ─── 批量上传队列项 ──────────────────────────────────────────────
-// status: 'pending' | 'uploading' | 'done' | 'error'
-function QueueItem({ item, onRemove }) {
-  const statusIcon = {
-    pending: '⏳',
-    uploading: '⚡',
-    done: '✅',
-    error: '❌',
-  }[item.status] || '⏳';
-
-  return (
-    <div className={`kb-queue-item kb-queue-${item.status}`}>
-      <span className="kb-queue-icon">{statusIcon}</span>
-      <span className="kb-queue-name">{item.file.name}</span>
-      <span className="kb-queue-size">{formatSize(item.file.size)}</span>
-      {item.status === 'error' && (
-        <span className="kb-queue-error">{item.error}</span>
-      )}
-      {item.status === 'pending' && (
-        <button className="kb-queue-remove" onClick={() => onRemove(item.id)}>✕</button>
-      )}
-    </div>
-  );
-}
-
-// ─── 主页面 ──────────────────────────────────────────────────────
-export default function KnowledgePage({ onBack }) {
+export default function KnowledgePage() {
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState('list');
   const [previewItem, setPreviewItem] = useState(null);
 
-  // 批量上传状态
   const [dragging, setDragging] = useState(false);
   const [uploadCategory, setUploadCategory] = useState('docs');
   const [uploadTags, setUploadTags] = useState('');
-  const [queue, setQueue] = useState([]); // [{id, file, status, error}]
+  const [queue, setQueue] = useState([]);
   const [uploading, setUploading] = useState(false);
   const [uploadDone, setUploadDone] = useState(false);
   const fileInputRef = useRef(null);
@@ -147,7 +63,6 @@ export default function KnowledgePage({ onBack }) {
     fetchItems();
   };
 
-  // 将 File 列表加入队列（过滤不支持的格式和超大文件）
   const addFilesToQueue = (files) => {
     const newItems = [];
     for (const file of files) {
@@ -161,61 +76,30 @@ export default function KnowledgePage({ onBack }) {
     setUploadDone(false);
   };
 
-  const handleDrop = (e) => {
-    e.preventDefault();
-    setDragging(false);
-    addFilesToQueue(Array.from(e.dataTransfer.files));
-  };
+  const handleDrop = (e) => { e.preventDefault(); setDragging(false); addFilesToQueue(Array.from(e.dataTransfer.files)); };
+  const handleFileInput = (e) => { addFilesToQueue(Array.from(e.target.files)); e.target.value = ''; };
+  const removeFromQueue = (id) => setQueue(prev => prev.filter(item => item.id !== id));
+  const clearQueue = () => { setQueue([]); setUploadDone(false); };
 
-  const handleFileInput = (e) => {
-    addFilesToQueue(Array.from(e.target.files));
-    e.target.value = '';
-  };
-
-  const removeFromQueue = (id) => {
-    setQueue(prev => prev.filter(item => item.id !== id));
-  };
-
-  const clearQueue = () => {
-    setQueue([]);
-    setUploadDone(false);
-  };
-
-  // 逐个上传队列中 pending 的文件
   const handleUploadAll = async () => {
     const pending = queue.filter(item => item.status === 'pending');
     if (pending.length === 0) return;
-
     setUploading(true);
     const tagsArr = uploadTags.split(',').map(t => t.trim()).filter(Boolean);
-
     for (const item of pending) {
-      // 标记为上传中
       setQueue(prev => prev.map(q => q.id === item.id ? { ...q, status: 'uploading' } : q));
-
       const form = new FormData();
       form.append('file', item.file);
       form.append('title', item.file.name.replace(/\.[^.]+$/, ''));
       form.append('category', uploadCategory);
       form.append('tags', JSON.stringify(tagsArr));
-
       try {
-        const res = await fetch('/api/knowledge', {
-          method: 'POST',
-          credentials: 'include',
-          body: form,
-        });
+        const res = await fetch('/api/knowledge', { method: 'POST', credentials: 'include', body: form });
         const data = await res.json();
-        if (!res.ok) {
-          setQueue(prev => prev.map(q => q.id === item.id ? { ...q, status: 'error', error: data.error || '上传失败' } : q));
-        } else {
-          setQueue(prev => prev.map(q => q.id === item.id ? { ...q, status: 'done' } : q));
-        }
-      } catch (err) {
-        setQueue(prev => prev.map(q => q.id === item.id ? { ...q, status: 'error', error: err.message } : q));
-      }
+        if (!res.ok) setQueue(prev => prev.map(q => q.id === item.id ? { ...q, status: 'error', error: data.error || '上传失败' } : q));
+        else setQueue(prev => prev.map(q => q.id === item.id ? { ...q, status: 'done' } : q));
+      } catch (err) { setQueue(prev => prev.map(q => q.id === item.id ? { ...q, status: 'error', error: err.message } : q)); }
     }
-
     setUploading(false);
     setUploadDone(true);
     fetchItems();
@@ -225,7 +109,6 @@ export default function KnowledgePage({ onBack }) {
   const doneCount = queue.filter(q => q.status === 'done').length;
   const errorCount = queue.filter(q => q.status === 'error').length;
 
-  // 按分类分组
   const grouped = { docs: [], qa: [], data: [] };
   items.forEach(item => {
     const cat = item.category || 'docs';
@@ -234,171 +117,220 @@ export default function KnowledgePage({ onBack }) {
   });
 
   return (
-    <div className="skills-page">
-      {/* 顶部导航 */}
-      <div className="skills-header">
-        <button className="skills-back-btn" onClick={onBack}>← 返回</button>
-        <h2 className="skills-title">知识库</h2>
-        <div className="skills-tabs">
-          <button
-            className={`skills-tab${activeTab === 'list' ? ' active' : ''}`}
-            onClick={() => setActiveTab('list')}
-          >
-            文件列表 {items.length > 0 && <span className="tab-count">{items.length}</span>}
-          </button>
-          <button
-            className={`skills-tab${activeTab === 'upload' ? ' active' : ''}`}
-            onClick={() => setActiveTab('upload')}
-          >
-            上传文件
-          </button>
+    <div className="max-w-5xl mx-auto">
+      <div className="relative overflow-hidden rounded-2xl mb-6 p-6 surface-grad">
+        <div className="absolute -right-20 -top-20 w-64 h-64 rounded-full bg-gradient-to-br from-[color:var(--accent)]/30 to-transparent blur-3xl pointer-events-none" />
+        <div className="relative flex items-center gap-4">
+          <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-[color:var(--accent)] to-[#5e8bff] text-white flex items-center justify-center shadow-glow">
+            <BookOpen size={26} />
+          </div>
+          <div className="flex-1">
+            <div className="text-2xl font-semibold tracking-tight text-gradient">知识库</div>
+            <div className="text-sm text-[color:var(--text-soft)]">上传文档，灵犀会在回答时自动检索参考</div>
+          </div>
         </div>
       </div>
 
-      {/* 文件列表 */}
+      <div className="flex gap-1 p-1 bg-[color:var(--bg-soft)] rounded-lg mb-6">
+        {[
+          { id: 'list', label: `文件列表${items.length ? ` (${items.length})` : ''}`, icon: BookOpen },
+          { id: 'upload', label: '上传文件', icon: Upload },
+        ].map(t => {
+          const Icon = t.icon;
+          return (
+            <button key={t.id} onClick={() => setActiveTab(t.id)} className={cn(
+              'flex-1 flex items-center justify-center gap-2 px-3 py-2 text-sm rounded-md transition',
+              activeTab === t.id ? 'bg-[color:var(--bg-elev)] shadow-soft text-[color:var(--accent)] font-medium' : 'text-[color:var(--text-soft)] hover:text-[color:var(--text)]'
+            )}>
+              <Icon size={14} /> {t.label}
+            </button>
+          );
+        })}
+      </div>
+
       {activeTab === 'list' && (
-        <div className="skills-body">
+        <div>
           {loading ? (
-            <div className="skills-loading">加载中...</div>
+            <div className="py-20 text-center text-[color:var(--text-faint)]">
+              <Loader2 size={24} className="animate-spin mx-auto mb-3" />加载中...
+            </div>
           ) : items.length === 0 ? (
-            <div className="skills-empty">
-              <div className="skills-empty-icon">📚</div>
-              <div className="skills-empty-text">知识库为空</div>
-              <div className="skills-empty-hint">上传 .md .txt .csv 等文件，灵犀会在回答时自动参考</div>
-              <button className="skill-btn install" onClick={() => setActiveTab('upload')}>上传文件</button>
+            <div className="py-20 text-center">
+              <BookOpen size={40} className="mx-auto mb-3 text-[color:var(--accent)] opacity-50" />
+              <p className="text-[color:var(--text-soft)]">知识库为空</p>
+              <p className="text-xs text-[color:var(--text-faint)] mt-1">上传 .md .txt .csv .pdf .docx 等文件，灵犀会在回答时自动参考</p>
+              <Button className="mt-4" onClick={() => setActiveTab('upload')}><Upload size={14} /> 上传文件</Button>
             </div>
           ) : (
-            <div className="kb-list">
-              {Object.entries(grouped).map(([cat, catItems]) =>
-                catItems.length === 0 ? null : (
-                  <div key={cat} className="kb-group">
-                    <div className="kb-group-title">
-                      {CATEGORY_ICONS[cat]} {CATEGORY_LABELS[cat]}
-                      <span className="kb-group-count">{catItems.length}</span>
+            <div className="space-y-6">
+              {Object.entries(grouped).map(([cat, catItems]) => {
+                if (catItems.length === 0) return null;
+                const cfg = CATEGORY_MAP[cat] || CATEGORY_MAP.docs;
+                const Icon = cfg.icon;
+                return (
+                  <div key={cat}>
+                    <div className="flex items-center gap-2 text-xs font-medium text-[color:var(--text-faint)] uppercase tracking-wide pb-2 mb-3 border-b border-[color:var(--line)]">
+                      <Icon size={12} /> {cfg.label}
+                      <Badge tone="default" className="ml-auto">{catItems.length}</Badge>
                     </div>
-                    {catItems.map(item => (
-                      <KnowledgeCard
-                        key={item.id}
-                        item={item}
-                        onDelete={handleDelete}
-                        onPreview={setPreviewItem}
-                      />
-                    ))}
+                    <div className="space-y-2">
+                      <AnimatePresence>
+                        {catItems.map(item => (
+                          <motion.div key={item.id} layout initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, scale: 0.95 }}>
+                            <KnowledgeCard item={item} onDelete={handleDelete} onPreview={setPreviewItem} />
+                          </motion.div>
+                        ))}
+                      </AnimatePresence>
+                    </div>
                   </div>
-                )
-              )}
+                );
+              })}
             </div>
           )}
         </div>
       )}
 
-      {/* 批量上传 */}
       {activeTab === 'upload' && (
-        <div className="skills-body kb-upload-body">
-          {/* 可滚动内容区 */}
-          <div className="kb-upload-scroll">
-            <div className="upload-guide">
-              <div className="upload-guide-title">批量上传知识库文件</div>
-              <p className="upload-guide-desc">
-                支持 <code>.md</code> <code>.txt</code> <code>.csv</code> <code>.tsv</code> <code>.json</code>，
-                单文件不超过 10MB，可一次选择多个文件。上传后灵犀会在回答时自动检索参考。
-              </p>
-            </div>
+        <div className="max-w-xl">
+          <Card className="mb-5">
+            <div className="font-medium mb-1">批量上传知识库文件</div>
+            <p className="text-sm text-[color:var(--text-soft)]">
+              支持 <code className="text-[color:var(--accent)]">.md</code> <code className="text-[color:var(--accent)]">.txt</code> <code className="text-[color:var(--accent)]">.csv</code> <code className="text-[color:var(--accent)]">.tsv</code> <code className="text-[color:var(--accent)]">.json</code> <code className="text-[color:var(--accent)]">.pdf</code> <code className="text-[color:var(--accent)]">.docx</code>，单文件不超过 10MB
+            </p>
+          </Card>
 
-            {/* 拖拽上传区 */}
-            <div
-              className={`upload-zone${dragging ? ' dragging' : ''}`}
-              onDragOver={e => { e.preventDefault(); setDragging(true); }}
-              onDragLeave={() => setDragging(false)}
-              onDrop={handleDrop}
-              onClick={() => fileInputRef.current?.click()}
-            >
-              <input
-                ref={fileInputRef}
-                type="file"
-                accept=".md,.txt,.csv,.tsv,.json"
-                multiple
-                style={{ display: 'none' }}
-                onChange={handleFileInput}
-              />
-              <div className="upload-icon">📂</div>
-              <div className="upload-text">拖拽文件到此处，或点击选择文件</div>
-              <div className="upload-hint">支持多选，.md .txt .csv .tsv .json，每个文件最大 10MB</div>
-            </div>
-
-            {/* 公共设置 */}
-            <div className="kb-form">
-              <div className="kb-form-row">
-                <label className="kb-form-label">分类</label>
-                <select
-                  className="kb-form-select"
-                  value={uploadCategory}
-                  onChange={e => setUploadCategory(e.target.value)}
-                >
-                  <option value="docs">📄 文档</option>
-                  <option value="qa">💬 问答</option>
-                  <option value="data">📊 数据</option>
-                </select>
-              </div>
-              <div className="kb-form-row">
-                <label className="kb-form-label">标签</label>
-                <input
-                  className="kb-form-input"
-                  type="text"
-                  placeholder="多个标签用逗号分隔（可选）"
-                  value={uploadTags}
-                  onChange={e => setUploadTags(e.target.value)}
-                />
-              </div>
-            </div>
-
-            {/* 上传队列 */}
-            {queue.length > 0 && (
-              <div className="kb-queue">
-                <div className="kb-queue-header">
-                  <span className="kb-queue-title">
-                    待上传 {pendingCount} 个
-                    {doneCount > 0 && <span className="kb-queue-done-count"> · 已完成 {doneCount}</span>}
-                    {errorCount > 0 && <span className="kb-queue-err-count"> · 失败 {errorCount}</span>}
-                  </span>
-                  {!uploading && (
-                    <button className="kb-queue-clear" onClick={clearQueue}>清空</button>
-                  )}
-                </div>
-                <div className="kb-queue-list">
-                  {queue.map(item => (
-                    <QueueItem key={item.id} item={item} onRemove={removeFromQueue} />
-                  ))}
-                </div>
-              </div>
+          <div
+            className={cn(
+              'border-2 border-dashed rounded-xl p-12 text-center cursor-pointer transition-all',
+              dragging ? 'border-[color:var(--accent)] bg-[color:var(--accent-soft)] shadow-[0_0_20px_var(--accent-glow)]' : 'border-[color:var(--line)] bg-[color:var(--bg-elev)] hover:border-[color:var(--accent)]'
             )}
-
-            {uploadDone && errorCount === 0 && (
-              <div className="kb-upload-success">
-                ✅ 全部 {doneCount} 个文件上传成功！
-                <button className="kb-upload-view" onClick={() => setActiveTab('list')}>查看知识库</button>
-              </div>
-            )}
+            onDragOver={e => { e.preventDefault(); setDragging(true); }}
+            onDragLeave={() => setDragging(false)}
+            onDrop={handleDrop}
+            onClick={() => fileInputRef.current?.click()}
+          >
+            <input ref={fileInputRef} type="file" accept=".md,.txt,.csv,.tsv,.json,.pdf,.docx" multiple style={{ display: 'none' }} onChange={handleFileInput} />
+            <FolderUp size={32} className="mx-auto mb-3 text-[color:var(--text-faint)]" />
+            <div className="text-sm text-[color:var(--text-soft)]">拖拽文件到此处，或点击选择文件</div>
+            <div className="text-xs text-[color:var(--text-faint)] mt-1">支持多选，每个文件最大 10MB</div>
           </div>
 
-          {/* 上传按钮固定在底部 */}
-          <div className="kb-upload-footer">
-            <button
-              className="skill-btn install"
-              style={{ width: '100%' }}
-              onClick={handleUploadAll}
-              disabled={uploading || pendingCount === 0}
-            >
-              {uploading ? `上传中... (${doneCount + errorCount}/${queue.length})` : `上传 ${pendingCount} 个文件`}
-            </button>
+          <div className="flex gap-3 mt-4">
+            <div className="flex-1">
+              <div className="text-xs text-[color:var(--text-faint)] mb-1">分类</div>
+              <Select value={uploadCategory} onChange={e => setUploadCategory(e.target.value)}>
+                <option value="docs">文档</option>
+                <option value="qa">问答</option>
+                <option value="data">数据</option>
+              </Select>
+            </div>
+            <div className="flex-1">
+              <div className="text-xs text-[color:var(--text-faint)] mb-1">标签</div>
+              <Input placeholder="多个标签用逗号分隔" value={uploadTags} onChange={e => setUploadTags(e.target.value)} />
+            </div>
+          </div>
+
+          {queue.length > 0 && (
+            <Card className="mt-4 !p-0 overflow-hidden">
+              <div className="flex items-center justify-between px-4 py-2.5 bg-[color:var(--bg-soft)] border-b border-[color:var(--line)]">
+                <span className="text-sm font-medium">
+                  待上传 {pendingCount} 个
+                  {doneCount > 0 && <span className="text-emerald-500"> · 已完成 {doneCount}</span>}
+                  {errorCount > 0 && <span className="text-red-500"> · 失败 {errorCount}</span>}
+                </span>
+                {!uploading && <button className="text-xs text-[color:var(--text-faint)] hover:text-[color:var(--text-soft)]" onClick={clearQueue}>清空</button>}
+              </div>
+              <div className="max-h-[280px] overflow-y-auto scrollable">
+                {queue.map(item => (
+                  <div key={item.id} className="flex items-center gap-2 px-4 py-2 border-b border-[color:var(--line)] last:border-0 text-sm">
+                    {item.status === 'done' ? <CheckCircle2 size={14} className="text-emerald-500 shrink-0" /> :
+                     item.status === 'error' ? <AlertCircle size={14} className="text-red-500 shrink-0" /> :
+                     item.status === 'uploading' ? <Loader2 size={14} className="text-[color:var(--accent)] animate-spin shrink-0" /> :
+                     <span className="w-3.5 h-3.5 rounded-full bg-[color:var(--bg-soft)] shrink-0" />}
+                    <span className="flex-1 truncate">{item.file.name}</span>
+                    <span className="text-xs text-[color:var(--text-faint)] shrink-0">{formatSize(item.file.size)}</span>
+                    {item.status === 'error' && <span className="text-xs text-red-500 shrink-0 truncate max-w-[120px]">{item.error}</span>}
+                    {item.status === 'pending' && <button className="text-[color:var(--text-faint)] hover:text-red-500" onClick={() => removeFromQueue(item.id)}><X size={12} /></button>}
+                  </div>
+                ))}
+              </div>
+            </Card>
+          )}
+
+          {uploadDone && errorCount === 0 && (
+            <div className="mt-3 flex items-center gap-2 px-4 py-3 rounded-lg bg-emerald-500/10 border border-emerald-500/30 text-emerald-500 text-sm">
+              <CheckCircle2 size={16} /> 全部 {doneCount} 个文件上传成功！
+              <button className="ml-auto text-xs border border-emerald-500/40 px-2.5 py-1 rounded hover:bg-emerald-500/10 transition" onClick={() => setActiveTab('list')}>查看知识库</button>
+            </div>
+          )}
+
+          <div className="mt-4">
+            <Button className="w-full" onClick={handleUploadAll} disabled={uploading || pendingCount === 0}>
+              {uploading ? <><Loader2 size={14} className="animate-spin" />上传中... ({doneCount + errorCount}/{queue.length})</> : <><Upload size={14} />上传 {pendingCount} 个文件</>}
+            </Button>
           </div>
         </div>
       )}
 
-      {/* 预览弹窗 */}
-      {previewItem && (
-        <PreviewModal item={previewItem} onClose={() => setPreviewItem(null)} />
-      )}
+      <PreviewModal item={previewItem} onClose={() => setPreviewItem(null)} />
     </div>
+  );
+}
+
+function KnowledgeCard({ item, onDelete, onPreview }) {
+  const tags = parseTags(item.tags);
+  const cfg = CATEGORY_MAP[item.category] || CATEGORY_MAP.docs;
+  return (
+    <Card className="transition-all hover:-translate-y-0.5 hover:shadow-glow group">
+      <div className="flex items-start gap-3">
+        <div className="w-10 h-10 rounded-xl bg-[color:var(--accent-soft)] text-[color:var(--accent)] flex items-center justify-center shrink-0">
+          <cfg.icon size={18} />
+        </div>
+        <div className="flex-1 min-w-0">
+          <div className="font-medium truncate">{item.title}</div>
+          <div className="flex items-center gap-2 text-xs text-[color:var(--text-faint)] mt-0.5">
+            <Badge tone="accent">{cfg.label}</Badge>
+            <span>{formatSize(item.size)}</span>
+            <span>{new Date(item.created_at).toLocaleDateString('zh-CN')}</span>
+          </div>
+        </div>
+        <div className="flex gap-1.5 shrink-0 opacity-0 group-hover:opacity-100 transition">
+          <Button size="sm" variant="ghost" onClick={() => onPreview(item)}><Eye size={14} /></Button>
+          <Button size="sm" variant="ghost" onClick={() => onDelete(item)}><Trash2 size={14} /></Button>
+        </div>
+      </div>
+      {item.summary && <div className="mt-2 text-sm text-[color:var(--text-soft)] line-clamp-2">{item.summary}</div>}
+      {tags.length > 0 && (
+        <div className="flex flex-wrap gap-1.5 mt-2">
+          {tags.map((t, i) => <Badge key={i} tone="default">{t}</Badge>)}
+        </div>
+      )}
+    </Card>
+  );
+}
+
+function PreviewModal({ item, onClose }) {
+  const [content, setContent] = useState('');
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    if (!item) return;
+    setLoading(true);
+    fetch(`/api/knowledge/${item.id}/preview`, { credentials: 'include' })
+      .then(r => r.json())
+      .then(data => { setContent(data.content || ''); setLoading(false); })
+      .catch(() => { setContent('加载失败'); setLoading(false); });
+  }, [item?.id]);
+
+  return (
+    <Modal open={!!item} onClose={onClose} title={item?.title || '预览'} width={720}>
+      {loading ? (
+        <div className="py-10 text-center text-[color:var(--text-faint)]"><Loader2 size={20} className="animate-spin mx-auto mb-2" />加载中...</div>
+      ) : (
+        <div className="md-block text-sm leading-relaxed max-h-[60vh] overflow-y-auto scrollable">
+          <ReactMarkdown remarkPlugins={[remarkGfm]}>{content}</ReactMarkdown>
+        </div>
+      )}
+    </Modal>
   );
 }

@@ -1,7 +1,5 @@
-import { clsx } from 'clsx';
-import { twMerge } from 'tailwind-merge';
-
-export function cn(...args) { return twMerge(clsx(args)); }
+import { forwardRef, useEffect, useId, useRef } from 'react';
+import { cn } from './cn';
 
 export function Button({ className, variant = 'default', size = 'md', children, ...rest }) {
   const variants = {
@@ -20,7 +18,7 @@ export function Button({ className, variant = 'default', size = 'md', children, 
   return (
     <button
       className={cn(
-        'inline-flex items-center justify-center gap-1.5 font-medium select-none transition active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed',
+        'inline-flex items-center justify-center gap-1.5 font-medium select-none transition active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--accent)]/40 focus-visible:ring-offset-2 focus-visible:ring-offset-[color:var(--bg)]',
         variants[variant], sizes[size], className,
       )}
       {...rest}
@@ -85,24 +83,52 @@ export function Badge({ className, tone = 'default', children }) {
   );
 }
 
-export function Card({ className, children }) {
-  return <div className={cn('surface p-4', className)}>{children}</div>;
-}
+export const Card = forwardRef(function Card({ className, children }, ref) {
+  return <div ref={ref} className={cn('surface p-4', className)}>{children}</div>;
+});
 
 // Modal/Dialog 简单实现
 export function Modal({ open, onClose, title, footer, children, width = 520 }) {
+  const dialogRef = useRef(null);
+  const titleId = useId();
+
+  useEffect(() => {
+    if (!open) return;
+    const previouslyFocused = document.activeElement;
+    const onKeyDown = (e) => {
+      if (e.key === 'Escape') onClose?.();
+    };
+    document.addEventListener('keydown', onKeyDown);
+    requestAnimationFrame(() => {
+      const first = dialogRef.current?.querySelector('button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])');
+      first?.focus?.();
+    });
+    return () => {
+      document.removeEventListener('keydown', onKeyDown);
+      previouslyFocused?.focus?.();
+    };
+  }, [onClose, open]);
+
   if (!open) return null;
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm" onClick={onClose}>
       <div
+        ref={dialogRef}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby={title ? titleId : undefined}
         className="surface w-full mx-4 animate-rise"
         style={{ maxWidth: width }}
         onClick={(e) => e.stopPropagation()}
       >
         {title && (
           <div className="px-5 py-3 border-b border-[color:var(--line)] flex items-center justify-between">
-            <div className="font-semibold">{title}</div>
-            <button className="text-[color:var(--text-faint)] hover:text-[color:var(--text)]" onClick={onClose}>✕</button>
+            <div id={titleId} className="font-semibold">{title}</div>
+            <button
+              className="text-[color:var(--text-faint)] hover:text-[color:var(--text)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--accent)]/40 rounded-md"
+              onClick={onClose}
+              aria-label="关闭弹窗"
+            >✕</button>
           </div>
         )}
         <div className="p-5">{children}</div>
@@ -115,7 +141,7 @@ export function Modal({ open, onClose, title, footer, children, width = 520 }) {
 // 简易 toast 容器
 export function ToastStack({ items }) {
   return (
-    <div className="fixed top-4 right-4 z-50 flex flex-col gap-2">
+    <div className="fixed top-4 right-4 z-50 flex flex-col gap-2" role="status" aria-live="polite">
       {items.map((n) => (
         <div key={n.id} className="surface px-4 py-3 shadow-soft animate-rise min-w-[260px]">
           {n.title && <div className="font-medium">{n.title}</div>}
@@ -131,7 +157,7 @@ export function Tooltip({ children, label }) {
     <span className="relative group inline-flex">
       {children}
       <span className="pointer-events-none absolute -top-9 left-1/2 -translate-x-1/2 whitespace-nowrap
-        bg-ink-900 text-white text-xs px-2 py-1 rounded opacity-0 group-hover:opacity-100 transition">
+        bg-ink-900 text-white text-xs px-2 py-1 rounded opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 transition">
         {label}
       </span>
     </span>

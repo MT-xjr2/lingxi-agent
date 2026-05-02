@@ -1,4 +1,5 @@
 import { useEffect } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
 import { useStore, initStore } from '../state/useStore';
 import { SidebarSessions } from './SidebarSessions';
 import { ModelSwitcher } from './ModelSwitcher';
@@ -11,17 +12,40 @@ import KnowledgePage from '../KnowledgePage';
 import IMConnectorPage from '../IMConnectorPage';
 import MCPPage from '../MCPPage';
 import AgentFactoryPage from '../AgentFactoryPage';
-import { ToastStack, cn } from './primitives';
+import { ToastStack } from './primitives';
+import { cn } from './cn';
 import { MessageSquare, Settings as SettingsIcon, Brain, BookOpen, MessageCircle, Plug, Sparkles } from 'lucide-react';
 
-const NAV = [
-  { id: 'chat',     label: '对话',   icon: MessageSquare },
-  { id: 'agents',   label: '智能体', icon: Sparkles },
-  { id: 'skills',   label: '技能',   icon: Brain },
-  { id: 'knowledge',label: '知识库', icon: BookOpen },
-  { id: 'mcp',      label: 'MCP',    icon: Plug },
-  { id: 'im',       label: 'IM',     icon: MessageCircle },
-  { id: 'settings', label: '设置',   icon: SettingsIcon },
+const pageMotion = {
+  initial: { opacity: 0, y: 6 },
+  animate: { opacity: 1, y: 0 },
+  exit: { opacity: 0, y: -4 },
+  transition: { duration: 0.18, ease: [0.2, 0.8, 0.2, 1] },
+};
+
+const NAV_GROUPS = [
+  {
+    label: '工作台',
+    items: [
+      { id: 'chat', label: '对话', icon: MessageSquare, hint: '日常问答与任务协作' },
+      { id: 'agents', label: '智能体', icon: Sparkles, hint: '创建与管理专属角色' },
+    ],
+  },
+  {
+    label: '能力管理',
+    items: [
+      { id: 'skills', label: '技能', icon: Brain, hint: '扩展可执行能力' },
+      { id: 'knowledge', label: '知识库', icon: BookOpen, hint: '上传资料与检索增强' },
+      { id: 'mcp', label: 'MCP', icon: Plug, hint: '连接外部工具服务' },
+      { id: 'im', label: 'IM 接入', icon: MessageCircle, hint: '飞书/钉钉/企微接入' },
+    ],
+  },
+  {
+    label: '系统',
+    items: [
+      { id: 'settings', label: '设置', icon: SettingsIcon, hint: '模型、用量与外观' },
+    ],
+  },
 ];
 
 export function AppShell() {
@@ -52,27 +76,45 @@ export function AppShell() {
       <div className="flex-1 flex min-h-0">
         {/* 左侧导航 + 会话列表 */}
         <aside className="w-64 shrink-0 border-r border-[color:var(--line)] bg-[color:var(--bg-elev)]/80 backdrop-blur flex flex-col">
-          <nav className="px-2 pt-3 pb-1 grid grid-cols-4 gap-1">
-            {NAV.map((n) => {
-              const Icon = n.icon;
-              const active = view === n.id;
-              return (
-                <button
-                  key={n.id}
-                  onClick={() => setView(n.id)}
-                  className={cn(
-                    'flex flex-col items-center gap-0.5 py-1.5 rounded-lg text-[11px] transition-all duration-200',
-                    active
-                      ? 'bg-gradient-to-br from-[color:var(--accent-soft)] to-transparent text-[color:var(--accent)] shadow-[inset_0_0_0_1px_var(--accent-soft)]'
-                      : 'text-[color:var(--text-soft)] hover:bg-[color:var(--bg-soft)] hover:-translate-y-px'
-                  )}
-                  title={n.label}
-                >
-                  <Icon size={14} />
-                  {n.label}
-                </button>
-              );
-            })}
+          <nav className="px-3 pt-3 pb-2 space-y-4" aria-label="主导航">
+            {NAV_GROUPS.map((group) => (
+              <div key={group.label}>
+                <div className="px-2 mb-1.5 text-[11px] font-medium tracking-wide text-[color:var(--text-faint)]">
+                  {group.label}
+                </div>
+                <div className="space-y-1">
+                  {group.items.map((n) => {
+                    const Icon = n.icon;
+                    const active = view === n.id;
+                    return (
+                      <button
+                        key={n.id}
+                        onClick={() => setView(n.id)}
+                        className={cn(
+                          'w-full flex items-center gap-3 px-2.5 py-2 rounded-xl text-left transition-all duration-200',
+                          active
+                            ? 'bg-gradient-to-r from-[color:var(--accent-soft)] to-transparent text-[color:var(--accent)] shadow-[inset_0_0_0_1px_var(--accent-soft)]'
+                            : 'text-[color:var(--text-soft)] hover:bg-[color:var(--bg-soft)] hover:text-[color:var(--text)]'
+                        )}
+                        aria-current={active ? 'page' : undefined}
+                        title={`${n.label} · ${n.hint}`}
+                      >
+                        <span className={cn(
+                          'w-8 h-8 rounded-lg flex items-center justify-center shrink-0',
+                          active ? 'bg-[color:var(--bg-elev)] shadow-soft' : 'bg-[color:var(--bg-soft)]'
+                        )}>
+                          <Icon size={16} />
+                        </span>
+                        <span className="min-w-0">
+                          <span className="block text-sm font-medium truncate">{n.label}</span>
+                          <span className="block text-[11px] text-[color:var(--text-faint)] truncate">{n.hint}</span>
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            ))}
           </nav>
           <div className="flex-1 min-h-0">
             {(view === 'chat') ? <SidebarSessions /> : null}
@@ -80,34 +122,44 @@ export function AppShell() {
         </aside>
 
         {/* 主区 */}
-        <main className="flex-1 flex flex-col min-h-0">
-          {view === 'chat' && <ChatView />}
-          {view === 'settings' && <SettingsPage />}
-          {view === 'agents' && (
-            <div className="flex-1 overflow-auto scrollable bg-[color:var(--bg)] p-6">
-              <AgentFactoryPage onBack={() => setView('chat')} />
-            </div>
-          )}
-          {view === 'mcp' && (
-            <div className="flex-1 overflow-auto scrollable bg-[color:var(--bg)] p-6">
-              <MCPPage onBack={() => setView('chat')} />
-            </div>
-          )}
-          {view === 'skills' && (
-            <div className="flex-1 overflow-auto scrollable bg-[color:var(--bg)] p-4">
-              <SkillsPage onBack={() => setView('chat')} />
-            </div>
-          )}
-          {view === 'knowledge' && (
-            <div className="flex-1 overflow-auto scrollable bg-[color:var(--bg)] p-4">
-              <KnowledgePage onBack={() => setView('chat')} />
-            </div>
-          )}
-          {view === 'im' && (
-            <div className="flex-1 overflow-auto scrollable bg-[color:var(--bg)] p-4">
-              <IMConnectorPage onBack={() => setView('chat')} />
-            </div>
-          )}
+        <main className="flex-1 flex flex-col min-h-0 relative">
+          <AnimatePresence mode="wait">
+            {view === 'chat' && (
+              <motion.div key="chat" className="flex-1 flex flex-col min-h-0" {...pageMotion}>
+                <ChatView />
+              </motion.div>
+            )}
+            {view === 'settings' && (
+              <motion.div key="settings" className="flex-1 flex flex-col min-h-0" {...pageMotion}>
+                <SettingsPage />
+              </motion.div>
+            )}
+            {view === 'agents' && (
+              <motion.div key="agents" className="flex-1 overflow-auto scrollable bg-[color:var(--bg)] p-6" {...pageMotion}>
+                <AgentFactoryPage onBack={() => setView('chat')} />
+              </motion.div>
+            )}
+            {view === 'mcp' && (
+              <motion.div key="mcp" className="flex-1 overflow-auto scrollable bg-[color:var(--bg)] p-6" {...pageMotion}>
+                <MCPPage onBack={() => setView('chat')} />
+              </motion.div>
+            )}
+            {view === 'skills' && (
+              <motion.div key="skills" className="flex-1 overflow-auto scrollable bg-[color:var(--bg)] p-4" {...pageMotion}>
+                <SkillsPage />
+              </motion.div>
+            )}
+            {view === 'knowledge' && (
+              <motion.div key="knowledge" className="flex-1 overflow-auto scrollable bg-[color:var(--bg)] p-4" {...pageMotion}>
+                <KnowledgePage />
+              </motion.div>
+            )}
+            {view === 'im' && (
+              <motion.div key="im" className="flex-1 overflow-auto scrollable bg-[color:var(--bg)] p-4" {...pageMotion}>
+                <IMConnectorPage />
+              </motion.div>
+            )}
+          </AnimatePresence>
         </main>
       </div>
 

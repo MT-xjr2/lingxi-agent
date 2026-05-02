@@ -1,0 +1,293 @@
+---
+description: 灵犀 AI Agent 项目开发规范，适用于所有文件修改
+globs:
+alwaysApply: true
+---
+
+# 灵犀 AI Agent — Cursor 开发规范
+
+## 项目概述
+
+灵犀 AI Agent 是一个本地优先的桌面 AI Agent 工作台。架构为 **Electron (桌面壳) + React (前端) + Go (后端)**，通过本地 AI 引擎与多模型接入层连接不同模型供应商。
+
+## 关键规则
+
+### 1. 子代理限制
+
+**禁止在开发任务中开启子代理（subagent）。** 所有分析、编码、调试、打包任务必须在当前会话中直接完成。
+
+### 2. 开发完成后的强制流程
+
+每次需求开发完成后，必须按顺序执行以下步骤：
+
+1. **打包 & 安装**
+   ```bash
+   # 退出现有程序
+   pkill -x "灵犀" 2>/dev/null; sleep 1
+   # 构建（需确保 Node.js >= 20.19 或 >= 22.12）
+   export PATH="/tmp/node22/bin:$PATH"  # 如系统 node 版本不够
+   cd <project-root> && ./build-desktop.sh
+   # 覆盖安装
+   rm -rf "/Applications/灵犀.app"
+   cp -R "dist-electron/mac-arm64/灵犀.app" "/Applications/灵犀.app"
+   xattr -cr "/Applications/灵犀.app"
+   open "/Applications/灵犀.app"
+   ```
+
+2. **更新项目文档**
+   - 更新 `.cursor/rules/lingxi-agent.mdc`（如有架构/规范变更）
+   - 更新 `CLAUDE.md`（如有新增模块、技术栈变更、开发流程变更）
+   - 更新 `README.md`（如有新增用户可见功能、快捷键、配置项等）
+
+---
+
+## 技术架构
+
+### 前端 (`frontend-desktop/`)
+
+| 技术 | 版本 | 用途 |
+|------|------|------|
+| React | 19 | UI 框架 |
+| Vite | 8 | 构建工具（**需 Node.js ≥ 20.19 或 ≥ 22.12**） |
+| Tailwind CSS | 3.4 | 样式系统 |
+| Zustand | 5 | 全局状态管理 |
+| Framer Motion | 12 | 动画库 |
+| Lucide React | 1.14 | 图标库 |
+| Recharts | 3 | 图表库 |
+| react-markdown + remark-gfm | — | Markdown 渲染 |
+| prism-react-renderer | 2 | 代码语法高亮 |
+| @tanstack/react-virtual | 3 | 虚拟滚动 |
+
+### 后端 (`backend-desktop/`)
+
+| 技术 | 版本 | 用途 |
+|------|------|------|
+| Go | 1.24 | 语言 |
+| Gin | 1.10 | HTTP 框架 |
+| Gorilla WebSocket | 1.5 | WebSocket |
+| ncruces/go-sqlite3 | 0.22 | SQLite 驱动（WASM 实现，无 CGO） |
+| ledongthuc/pdf | — | PDF 文本提取 |
+| nguyenthenguyen/docx | — | DOCX 文本提取 |
+
+### 桌面壳 (`electron/`)
+
+| 技术 | 版本 | 用途 |
+|------|------|------|
+| Electron | 36 | 桌面容器 |
+| electron-builder | 25 | 打包工具 |
+
+---
+
+## 前端代码规范
+
+### 组件体系
+
+- **原子组件**在 `src/ui/primitives.jsx`：Button、Input、Textarea、Select、Badge、Card、Modal、ToastStack、Tooltip
+- 所有新页面/组件必须使用 primitives 中的封装组件，不允许使用原生 HTML 元素 + 手写样式
+- 使用 `cn()` 工具函数（`src/ui/cn.js`）合并 className，基于 `clsx` + `tailwind-merge`
+
+### 样式规范
+
+- **只使用 Tailwind CSS + CSS 变量**，不使用独立 CSS 文件（`App.css` 为遗留文件）
+- 颜色使用 CSS 变量：`var(--bg)`, `var(--text)`, `var(--accent)`, `var(--line)` 等
+- Tailwind 中引用 CSS 变量使用 `[color:var(--xxx)]` 语法
+- 主题定义在 `src/index.css` 中，通过 `[data-theme="xxx"]` 选择器
+- 当前主题：`light`, `dark`, `midnight`, `cyber`, `aurora`, `cosmos`
+
+### 状态管理
+
+- 全局状态使用 `useStore`（Zustand），定义在 `src/state/useStore.js`
+- 页面级临时状态使用 `useState`
+- 不引入 Redux / Context 等其他状态方案
+
+### 动画
+
+- 使用 `framer-motion` 的 `motion.div`、`AnimatePresence` 实现进场/退场动画
+- 页面级切换在 `AppShell.jsx` 中通过 `AnimatePresence mode="wait"` 管理
+- 列表增删使用 `AnimatePresence` + `motion.div` + `layout` 属性
+- CSS 动画关键帧定义在 `src/index.css`（`shimmer`, `breathe`, `riseFade`, `pulseRing`, `rise`）
+
+### 图标
+
+- 统一使用 `lucide-react`，不使用 emoji 或其他图标库
+- 图标尺寸：小按钮 `size={14}`，标准 `size={16-18}`，页面标题 `size={24-26}`
+
+### 文件组织
+
+```
+src/
+├── main.jsx              # 入口
+├── index.css             # Tailwind 基础 + 主题 CSS 变量
+├── api/client.js         # API 请求封装
+├── state/useStore.js     # Zustand 全局状态
+├── ui/                   # 通用 UI 组件
+│   ├── AppShell.jsx      # 主布局壳
+│   ├── primitives.jsx    # 原子组件
+│   ├── cn.js             # className 合并工具
+│   ├── SidebarSessions.jsx
+│   ├── ModelSwitcher.jsx
+│   ├── RouterPill.jsx
+│   └── ErrorBoundary.jsx
+├── chat/                 # 对话相关
+│   ├── ChatView.jsx      # 对话主视图
+│   ├── Composer.jsx      # 输入框（含斜杠命令）
+│   ├── MessageList.jsx   # 消息列表（含虚拟滚动）
+│   ├── Bubble.jsx        # 消息气泡
+│   ├── blocks.jsx        # 消息块渲染（文本/思考/工具）
+│   ├── blockUtils.js     # 工具函数
+│   ├── SearchModal.jsx   # 全文搜索弹窗
+│   ├── AgentPicker.jsx   # 智能体选择器
+│   └── AgentStatePill.jsx
+├── settings/             # 设置页
+│   ├── SettingsPage.jsx
+│   ├── ProfilesPage.jsx  # 接入点管理
+│   ├── AppearancePage.jsx # 主题设置
+│   └── UsagePage.jsx     # 用量统计 + 预算预警
+├── AgentFactoryPage.jsx  # 智能体工厂 + 模板市场
+├── SkillsPage.jsx        # 技能管理
+├── KnowledgePage.jsx     # 知识库管理
+├── MCPPage.jsx           # MCP 管理
+└── IMConnectorPage.jsx   # IM 连接器管理
+```
+
+---
+
+## 后端代码规范
+
+### API 设计
+
+- RESTful 风格，路径前缀 `/api/`
+- WebSocket 路径 `/ws`
+- 使用 `gin.H{}` 返回 JSON
+- 错误统一返回 `{"error": "消息"}`
+
+### 数据库
+
+- SQLite 单文件，路径 `$HOME/Library/Application Support/灵犀/smart-agent.db`
+- 所有表定义和迁移在 `db/db.go` 的 `InitDB()` 中
+- 使用 `ncruces/go-sqlite3`（纯 Go WASM 实现，不需要 CGO）
+
+### 文件目录
+
+```
+backend-desktop/
+├── main.go              # 入口 + 路由注册
+├── config/config.go     # 配置
+├── db/
+│   ├── db.go            # 数据库初始化 + CRUD
+│   └── mcp_agent.go     # MCP-Agent 关联
+├── handler/             # HTTP Handler
+│   ├── agent.go         # 智能体 CRUD
+│   ├── chat.go          # 对话 + 流式 WebSocket
+│   ├── knowledge.go     # 知识库（支持 PDF/DOCX）
+│   ├── mcp.go           # MCP 管理
+│   ├── provider.go      # 模型接入点管理
+│   ├── session.go       # 会话 + 消息搜索
+│   ├── skill.go         # 技能管理
+│   ├── usage.go         # 用量统计
+│   ├── im_connector.go  # IM 连接器
+│   ├── router_status.go # 路由状态
+│   ├── tasks.go         # 任务管理
+│   └── ws_hub.go        # WebSocket Hub
+├── connector/           # IM 连接器实现
+├── model/model.go       # 数据模型
+├── router/              # AI 引擎路由
+└── usage/               # 用量计算 + 定价
+```
+
+---
+
+## 构建 & 打包
+
+### 前置条件
+
+| 依赖 | 最低版本 | 说明 |
+|------|---------|------|
+| macOS | Apple Silicon arm64 | 打包目标 |
+| Node.js | 20.19 或 22.12 | Vite 8 要求 |
+| Go | 1.24 | 编译后端 |
+| Claude CLI | 最新 | 内置 AI 引擎 |
+
+### 构建命令
+
+```bash
+./build-desktop.sh
+```
+
+构建步骤：
+1. `go build` 编译 Go 后端 → `smart-agent`
+2. `npm run build` 构建前端 → `dist/`
+3. 复制 AI 引擎（Claude CLI）到 `electron/resources/ai-engine/`
+4. 安装 Bridge 路由层（llm-bridge + litellm）
+5. 复制 Node.js 运行时到 `electron/resources/node-bin/`
+6. `electron-builder --mac --arm64` 打包
+
+### 产物
+
+```
+dist-electron/
+├── mac-arm64/灵犀.app      # 可直接运行
+├── 灵犀-1.0.0-arm64.dmg    # 安装包
+└── 灵犀-1.0.0-arm64-mac.zip
+```
+
+### 安装（覆盖）
+
+```bash
+pkill -x "灵犀" 2>/dev/null; sleep 1
+rm -rf "/Applications/灵犀.app"
+cp -R "dist-electron/mac-arm64/灵犀.app" "/Applications/灵犀.app"
+xattr -cr "/Applications/灵犀.app"
+open "/Applications/灵犀.app"
+```
+
+---
+
+## Node.js 版本注意事项
+
+系统 Node.js 版本可能低于 Vite 8 所需的 20.19+。如遇版本不兼容：
+
+```bash
+# 方法：使用预下载的 Node 22
+curl -L "https://nodejs.org/dist/v22.15.0/node-v22.15.0-darwin-arm64.tar.gz" -o /tmp/node22.tar.gz
+mkdir -p /tmp/node22 && tar xzf /tmp/node22.tar.gz -C /tmp/node22 --strip-components=1
+export PATH="/tmp/node22/bin:$PATH"
+```
+
+---
+
+## npm 缓存权限问题
+
+如果遇到 `EACCES` 错误（npm 缓存被 root 占用）：
+
+```bash
+NPM_CONFIG_CACHE=/tmp/npm-lingxi-cache npm install [package] --force
+```
+
+---
+
+## 已实现的功能清单
+
+### 前端 UI
+- [x] Tailwind + primitives 统一 UI 体系
+- [x] 6 套主题（light/dark/midnight/cyber/aurora/cosmos）
+- [x] AnimatePresence 页面切换动画
+- [x] 代码块语法高亮 + 复制按钮（prism-react-renderer）
+- [x] 消息复制按钮
+- [x] 虚拟滚动（100+ 条消息自动启用）
+- [x] 会话重命名（双击编辑）
+- [x] Modal 化删除确认
+- [x] 全文消息搜索（Cmd+K）
+- [x] 对话导出为 Markdown
+- [x] 斜杠命令快捷输入（/ 唤起）
+- [x] 智能体模板市场（4 类 17 个模板）
+
+### 后端
+- [x] 知识库支持 PDF/DOCX 格式
+- [x] 消息全文搜索 API
+- [x] 预算预警功能
+
+### 平台
+- [x] IM 集成（企业微信/钉钉/飞书）
+- [x] MCP 工具管理
+- [x] 技能管理（AI 生成/ZIP 导入）

@@ -1,7 +1,6 @@
 import { useStore } from '../state/useStore';
 import { Brain, Search, Hammer, CheckCircle2 } from 'lucide-react';
-import { AnimatePresence, motion } from 'framer-motion';
-import { cn } from '../ui/primitives';
+import { cn } from '../ui/cn';
 
 const MAP = {
   THINKING:  { label: '正在思考', Icon: Brain,  cls: 'text-[color:var(--accent)]' },
@@ -17,17 +16,9 @@ export function AgentStatePill() {
   const conf = MAP[state] || MAP.THINKING;
   const { Icon } = conf;
   return (
-    <AnimatePresence>
-      <motion.div
-        key={state}
-        initial={{ opacity: 0, y: -6 }}
-        animate={{ opacity: 1, y: 0 }}
-        exit={{ opacity: 0 }}
-        className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full surface-soft text-xs font-medium"
-      >
-        <Icon size={14} className={cn(conf.cls, isStreaming && 'animate-breathe')} />
-        <span className="text-[color:var(--text-soft)]">{conf.label}</span>
-      </motion.div>
-    </AnimatePresence>
+    <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full surface-soft text-xs font-medium enter-up">
+      <Icon size={14} className={cn(conf.cls, isStreaming && 'animate-breathe')} />
+      <span className="text-[color:var(--text-soft)]">{conf.label}</span>
+    </div>
   );
 }

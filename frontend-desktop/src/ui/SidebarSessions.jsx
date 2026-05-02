@@ -1,8 +1,8 @@
-import { useState } from 'react';
+import { useState, useRef, useEffect, useCallback } from 'react';
 import { useStore } from '../state/useStore';
-import { Plus, MessageSquare, Trash2, Search, ChevronDown, Sparkles, Settings as SettingsIcon } from 'lucide-react';
-import { Input, cn } from './primitives';
-import { motion, AnimatePresence } from 'framer-motion';
+import { Plus, MessageSquare, Trash2, Search, ChevronDown, Sparkles, Settings as SettingsIcon, Pencil } from 'lucide-react';
+import { Input, Button, Modal } from './primitives';
+import { cn } from './cn';
 
 export function SidebarSessions() {
   const sessions = useStore((s) => s.sessions);
@@ -10,6 +10,7 @@ export function SidebarSessions() {
   const setActive = useStore((s) => s.setActiveSession);
   const createSession = useStore((s) => s.createSession);
   const deleteSession = useStore((s) => s.deleteSession);
+  const renameSession = useStore((s) => s.renameSession);
   const setView = useStore((s) => s.setView);
   const agents = useStore((s) => s.agents);
   const activeAgentId = useStore((s) => s.activeAgentId);
@@ -17,12 +18,19 @@ export function SidebarSessions() {
 
   const [q, setQ] = useState('');
   const [agentMenuOpen, setAgentMenuOpen] = useState(false);
+  const [deleteTarget, setDeleteTarget] = useState(null);
   const filtered = sessions.filter((s) => !q || (s.title || '').toLowerCase().includes(q.toLowerCase()));
   const currentAgent = agents.find((a) => a.id === activeAgentId) || agents.find((a) => a.builtin) || agents[0];
 
+  const handleConfirmDelete = useCallback(async () => {
+    if (deleteTarget) {
+      await deleteSession(deleteTarget.id);
+      setDeleteTarget(null);
+    }
+  }, [deleteTarget, deleteSession]);
+
   return (
     <div className="flex flex-col h-full p-3 gap-3">
-      {/* 当前智能体（点击切换） */}
       {currentAgent && (
         <div className="relative">
           <button
@@ -41,63 +49,43 @@ export function SidebarSessions() {
             </div>
             <ChevronDown size={14} className="text-[color:var(--text-faint)]" />
           </button>
-          <AnimatePresence>
-            {agentMenuOpen && (
-              <>
-                <div className="fixed inset-0 z-40" onClick={() => setAgentMenuOpen(false)} />
-                <motion.div
-                  initial={{ opacity: 0, y: -4 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  exit={{ opacity: 0, y: -4 }}
-                  className="absolute z-50 left-0 right-0 top-full mt-1 surface p-1.5 shadow-glow"
-                >
-                  <div className="text-[10px] uppercase tracking-wide text-[color:var(--text-faint)] px-2 py-1">
-                    切换智能体
-                  </div>
-                  <div className="max-h-[300px] overflow-auto">
-                    {agents.map((a) => {
-                      const sel = a.id === activeAgentId;
-                      return (
-                        <button
-                          key={a.id}
-                          onClick={async () => {
-                            setAgentMenuOpen(false);
-                            if (!sel) await setActiveAgent(a.id);
-                          }}
-                          className={cn(
-                            'w-full text-left flex items-center gap-2 px-2 py-1.5 rounded-lg transition',
-                            sel
-                              ? 'bg-[color:var(--accent-soft)] text-[color:var(--accent)]'
-                              : 'hover:bg-[color:var(--bg-soft)]'
-                          )}
-                        >
-                          <span className="w-7 h-7 rounded-lg bg-[color:var(--bg-soft)] flex items-center justify-center text-sm shrink-0">
-                            {a.avatar || '✦'}
-                          </span>
-                          <div className="flex-1 min-w-0">
-                            <div className="text-sm font-medium truncate">{a.name}</div>
-                            {a.description && (
-                              <div className="text-[11px] text-[color:var(--text-faint)] truncate">
-                                {a.description}
-                              </div>
-                            )}
-                          </div>
-                        </button>
-                      );
-                    })}
-                  </div>
-                  <div className="border-t border-[color:var(--line)] mt-1 pt-1">
-                    <button
-                      onClick={() => { setAgentMenuOpen(false); setView('agents'); }}
-                      className="w-full px-2 py-1.5 rounded-lg flex items-center gap-2 text-sm text-[color:var(--accent)] hover:bg-[color:var(--accent-soft)]"
-                    >
-                      <SettingsIcon size={13} />管理智能体…
-                    </button>
-                  </div>
-                </motion.div>
-              </>
-            )}
-          </AnimatePresence>
+          {agentMenuOpen && (
+            <>
+              <div className="fixed inset-0 z-40" onClick={() => setAgentMenuOpen(false)} />
+              <div className="absolute z-50 left-0 right-0 top-full mt-1 surface p-1.5 shadow-glow animate-rise">
+                <div className="text-[10px] uppercase tracking-wide text-[color:var(--text-faint)] px-2 py-1">切换智能体</div>
+                <div className="max-h-[300px] overflow-auto">
+                  {agents.map((a) => {
+                    const sel = a.id === activeAgentId;
+                    return (
+                      <button
+                        key={a.id}
+                        onClick={async () => { setAgentMenuOpen(false); if (!sel) await setActiveAgent(a.id); }}
+                        className={cn(
+                          'w-full text-left flex items-center gap-2 px-2 py-1.5 rounded-lg transition',
+                          sel ? 'bg-[color:var(--accent-soft)] text-[color:var(--accent)]' : 'hover:bg-[color:var(--bg-soft)]'
+                        )}
+                      >
+                        <span className="w-7 h-7 rounded-lg bg-[color:var(--bg-soft)] flex items-center justify-center text-sm shrink-0">{a.avatar || '✦'}</span>
+                        <div className="flex-1 min-w-0">
+                          <div className="text-sm font-medium truncate">{a.name}</div>
+                          {a.description && <div className="text-[11px] text-[color:var(--text-faint)] truncate">{a.description}</div>}
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
+                <div className="border-t border-[color:var(--line)] mt-1 pt-1">
+                  <button
+                    onClick={() => { setAgentMenuOpen(false); setView('agents'); }}
+                    className="w-full px-2 py-1.5 rounded-lg flex items-center gap-2 text-sm text-[color:var(--accent)] hover:bg-[color:var(--accent-soft)]"
+                  >
+                    <SettingsIcon size={13} />管理智能体…
+                  </button>
+                </div>
+              </div>
+            </>
+          )}
         </div>
       )}
 
@@ -120,7 +108,8 @@ export function SidebarSessions() {
             session={s}
             active={s.id === activeId}
             onClick={() => { setActive(s.id); setView('chat'); }}
-            onDelete={() => deleteSession(s.id)}
+            onDelete={() => setDeleteTarget(s)}
+            onRename={(title) => renameSession(s.id, title)}
           />
         ))}
         {filtered.length === 0 && (
@@ -131,14 +120,44 @@ export function SidebarSessions() {
           </div>
         )}
       </div>
+
+      <Modal open={!!deleteTarget} onClose={() => setDeleteTarget(null)} title="确认删除" width={380}>
+        <p className="text-sm text-[color:var(--text-soft)] mb-4">
+          确定要删除对话 <span className="font-medium text-[color:var(--text)]">「{deleteTarget?.title || '新对话'}」</span>？此操作不可恢复。
+        </p>
+        <div className="flex justify-end gap-2">
+          <Button variant="outline" size="sm" onClick={() => setDeleteTarget(null)}>取消</Button>
+          <Button variant="danger" size="sm" onClick={handleConfirmDelete}>删除</Button>
+        </div>
+      </Modal>
     </div>
   );
 }
 
-function SessionItem({ session, active, onClick, onDelete }) {
+function SessionItem({ session, active, onClick, onDelete, onRename }) {
+  const [editing, setEditing] = useState(false);
+  const [editTitle, setEditTitle] = useState('');
+  const inputRef = useRef(null);
+
+  const startEditing = useCallback(() => {
+    setEditTitle(session.title || '新对话');
+    setEditing(true);
+  }, [session.title]);
+
+  useEffect(() => {
+    if (editing) inputRef.current?.focus();
+  }, [editing]);
+
+  const commitRename = useCallback(() => {
+    const trimmed = editTitle.trim();
+    if (trimmed && trimmed !== session.title) onRename(trimmed);
+    setEditing(false);
+  }, [editTitle, session.title, onRename]);
+
   return (
     <div
       onClick={onClick}
+      onDoubleClick={(e) => { e.stopPropagation(); startEditing(); }}
       className={cn(
         'group relative flex items-center gap-2 px-2.5 py-2 rounded-lg cursor-pointer transition-all duration-200',
         active
@@ -151,17 +170,41 @@ function SessionItem({ session, active, onClick, onDelete }) {
       )}
       <MessageSquare size={14} className="shrink-0 opacity-70" />
       <div className="flex-1 min-w-0">
-        <div className="text-sm truncate">{session.title || '新对话'}</div>
-        <div className="text-[11px] text-[color:var(--text-faint)] truncate">
-          {session.message_count || 0} 条消息
-        </div>
+        {editing ? (
+          <input
+            ref={inputRef}
+            value={editTitle}
+            onChange={(e) => setEditTitle(e.target.value)}
+            onBlur={commitRename}
+            onKeyDown={(e) => { if (e.key === 'Enter') commitRename(); if (e.key === 'Escape') setEditing(false); }}
+            onClick={(e) => e.stopPropagation()}
+            className="text-sm w-full bg-transparent border-b border-[color:var(--accent)] outline-none py-0.5"
+          />
+        ) : (
+          <>
+            <div className="text-sm truncate">{session.title || '新对话'}</div>
+            <div className="text-[11px] text-[color:var(--text-faint)] truncate">{session.message_count || 0} 条消息</div>
+          </>
+        )}
       </div>
-      <button
-        className="opacity-0 group-hover:opacity-100 transition text-[color:var(--text-faint)] hover:text-red-500 p-1"
-        onClick={(e) => { e.stopPropagation(); if (confirm('删除该对话？')) onDelete(); }}
-      >
-        <Trash2 size={14} />
-      </button>
+      {!editing && (
+        <div className="opacity-0 group-hover:opacity-100 transition flex gap-0.5">
+          <button
+            className="text-[color:var(--text-faint)] hover:text-[color:var(--accent)] p-1 rounded"
+            onClick={(e) => { e.stopPropagation(); startEditing(); }}
+            title="重命名"
+          >
+            <Pencil size={12} />
+          </button>
+          <button
+            className="text-[color:var(--text-faint)] hover:text-red-500 p-1 rounded"
+            onClick={(e) => { e.stopPropagation(); onDelete(); }}
+            title="删除"
+          >
+            <Trash2 size={12} />
+          </button>
+        </div>
+      )}
     </div>
   );
 }

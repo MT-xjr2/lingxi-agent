@@ -1,51 +1,120 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useCallback, useMemo } from 'react';
+import { useVirtualizer } from '@tanstack/react-virtual';
 import { useStore } from '../state/useStore';
 import { UserBubble, AssistantBubble } from './Bubble';
 import { Sparkles } from 'lucide-react';
+
+const VIRTUALIZE_THRESHOLD = 60;
 
 export function MessageList() {
   const messages = useStore((s) => s.messages);
   const liveBlocks = useStore((s) => s.liveBlocks);
   const isStreaming = useStore((s) => s.isStreaming);
   const activeProfile = useStore((s) => s.activeProfile);
-  const ref = useRef(null);
+  const scrollRef = useRef(null);
+  const stickToBottomRef = useRef(true);
+  const userScrolledRef = useRef(false);
 
-  useEffect(() => {
-    const el = ref.current;
-    if (!el) return;
-    el.scrollTo({ top: el.scrollHeight, behavior: 'smooth' });
+  const items = useMemo(() => {
+    const list = messages.map(m => ({ type: 'message', message: m }));
+    if (isStreaming && liveBlocks.length > 0) {
+      list.push({ type: 'live', liveBlocks });
+    } else if (isStreaming && liveBlocks.length === 0) {
+      list.push({ type: 'connecting' });
+    }
+    return list;
   }, [messages, liveBlocks, isStreaming]);
 
-  if (messages.length === 0 && !isStreaming) {
+  const shouldVirtualize = items.length > VIRTUALIZE_THRESHOLD;
+
+  const handleScroll = useCallback(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    const atBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 80;
+    stickToBottomRef.current = atBottom;
+    userScrolledRef.current = !atBottom;
+  }, []);
+
+  const scrollToBottom = useCallback(() => {
+    const el = scrollRef.current;
+    if (!el || userScrolledRef.current) return;
+    requestAnimationFrame(() => {
+      el.scrollTo({ top: el.scrollHeight, behavior: 'smooth' });
+    });
+  }, []);
+
+  useEffect(() => {
+    if (stickToBottomRef.current) scrollToBottom();
+  }, [messages, liveBlocks, isStreaming, scrollToBottom]);
+
+  if (items.length === 0) {
     return (
-      <div ref={ref} className="flex-1 overflow-y-auto scrollable">
+      <div ref={scrollRef} className="flex-1 overflow-y-auto scrollable">
         <Empty profileName={activeProfile?.name || activeProfile?.model} />
       </div>
     );
   }
 
+  if (shouldVirtualize) {
+    return <VirtualizedList items={items} scrollRef={scrollRef} onScroll={handleScroll} />;
+  }
+
   return (
-    <div ref={ref} className="flex-1 overflow-y-auto scrollable px-6 pb-2">
+    <div ref={scrollRef} className="flex-1 overflow-y-auto scrollable px-6 pb-2" onScroll={handleScroll}>
       <div className="max-w-3xl mx-auto py-6">
-        {messages.map((m) => (
-          <div key={m.id} className="enter-up">
-            {m.role === 'user'
-              ? <UserBubble content={m.content} />
-              : <AssistantBubble message={m} />}
+        {items.map((item, i) => (
+          <MessageItem key={item.message?.id || `special-${i}`} item={item} />
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function VirtualizedList({ items, scrollRef, onScroll }) {
+  const virtualizer = useVirtualizer({
+    count: items.length,
+    getScrollElement: () => scrollRef.current,
+    estimateSize: () => 120,
+    overscan: 8,
+  });
+
+  return (
+    <div ref={scrollRef} className="flex-1 overflow-y-auto scrollable px-6 pb-2" onScroll={onScroll}>
+      <div className="max-w-3xl mx-auto py-6 relative" style={{ height: virtualizer.getTotalSize() }}>
+        {virtualizer.getVirtualItems().map(row => (
+          <div
+            key={row.key}
+            data-index={row.index}
+            ref={virtualizer.measureElement}
+            className="absolute left-0 right-0"
+            style={{ transform: `translateY(${row.start}px)` }}
+          >
+            <MessageItem item={items[row.index]} />
           </div>
         ))}
-        {isStreaming && liveBlocks.length > 0 && (
-          <div className="enter-up"><AssistantBubble live liveBlocks={liveBlocks} /></div>
-        )}
-        {isStreaming && liveBlocks.length === 0 && (
-          <div className="flex justify-start my-3 enter-up">
-            <div className="assistant-bubble flex items-center gap-2 text-[color:var(--text-soft)]">
-              <span className="w-1.5 h-1.5 rounded-full bg-[color:var(--accent)] animate-breathe" />
-              正在连接灵犀…
-            </div>
-          </div>
-        )}
       </div>
+    </div>
+  );
+}
+
+function MessageItem({ item }) {
+  if (item.type === 'live') {
+    return <div className="enter-up"><AssistantBubble live liveBlocks={item.liveBlocks} /></div>;
+  }
+  if (item.type === 'connecting') {
+    return (
+      <div className="flex justify-start my-3 enter-up">
+        <div className="assistant-bubble flex items-center gap-2 text-[color:var(--text-soft)]">
+          <span className="w-1.5 h-1.5 rounded-full bg-[color:var(--accent)] animate-breathe" />
+          正在连接灵犀…
+        </div>
+      </div>
+    );
+  }
+  const m = item.message;
+  return (
+    <div className="enter-up">
+      {m.role === 'user' ? <UserBubble content={m.content} /> : <AssistantBubble message={m} />}
     </div>
   );
 }

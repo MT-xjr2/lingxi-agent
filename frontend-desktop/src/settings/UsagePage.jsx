@@ -1,12 +1,12 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import {
   ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip,
   CartesianGrid, Legend,
 } from 'recharts';
-import { Coins, Cpu, Clock, BarChart3, Wallet, RefreshCw } from 'lucide-react';
+import { Coins, Cpu, Clock, BarChart3, Wallet, RefreshCw, AlertTriangle, Bell } from 'lucide-react';
 import { api } from '../api/client';
-import { Button, Card, Badge, Select } from '../ui/primitives';
-import { formatNum } from '../chat/blocks';
+import { Button, Card, Badge, Select, Input } from '../ui/primitives';
+import { formatNum } from '../chat/blockUtils';
 import { useStore } from '../state/useStore';
 
 const RANGES = [
@@ -16,22 +16,37 @@ const RANGES = [
   { v: '90d', label: '近 90 天' },
 ];
 
+function loadBudget() {
+  try {
+    const raw = localStorage.getItem('lingxi-budget');
+    return raw ? JSON.parse(raw) : { dailyLimit: 0, monthlyLimit: 0, alertThreshold: 80 };
+  } catch { return { dailyLimit: 0, monthlyLimit: 0, alertThreshold: 80 }; }
+}
+
+function saveBudget(b) {
+  localStorage.setItem('lingxi-budget', JSON.stringify(b));
+}
+
 export function UsagePage() {
   const [range, setRange] = useState('7d');
   const [data, setData] = useState(null);
   const [quota, setQuota] = useState(null);
   const [loadingQuota, setLoadingQuota] = useState(false);
-  const profiles = useStore((s) => s.profiles);
   const active = useStore((s) => s.activeProfile);
+  const addNotification = useStore((s) => s.addNotification);
+  const [budget, setBudget] = useState(loadBudget);
 
-  const load = async () => {
+  const load = useCallback(async () => {
     const u = await api.getUsage(range).catch(() => null);
     setData(u);
-  };
+  }, [range]);
 
-  useEffect(() => { load(); }, [range]);
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    load();
+  }, [load]);
 
-  const loadQuota = async () => {
+  const loadQuota = useCallback(async () => {
     if (!active) return;
     setLoadingQuota(true);
     try {
@@ -42,12 +57,35 @@ export function UsagePage() {
     } finally {
       setLoadingQuota(false);
     }
-  };
+  }, [active]);
 
-  useEffect(() => { if (active) loadQuota(); }, [active?.id]);
+  useEffect(() => {
+    if (!active) return;
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    loadQuota();
+  }, [active, loadQuota]);
+
+  useEffect(() => {
+    if (!data?.today) return;
+    const todayCost = data.today.cost_usd || 0;
+    const threshold = (budget.alertThreshold || 80) / 100;
+    if (budget.dailyLimit > 0 && todayCost >= budget.dailyLimit * threshold) {
+      const pct = Math.round((todayCost / budget.dailyLimit) * 100);
+      addNotification?.({ title: '费用预警', body: `今日费用已达预算的 ${pct}%（$${todayCost.toFixed(4)} / $${budget.dailyLimit}）` });
+    }
+  }, [data?.today?.cost_usd, budget.dailyLimit, budget.alertThreshold]);
+
+  const handleBudgetChange = (field, value) => {
+    const next = { ...budget, [field]: Number(value) || 0 };
+    setBudget(next);
+    saveBudget(next);
+  };
 
   const summary = data?.summary || {};
   const today = data?.today || {};
+
+  const dailyPct = budget.dailyLimit > 0 ? Math.min(100, ((today.cost_usd || 0) / budget.dailyLimit) * 100) : 0;
+  const monthlyPct = budget.monthlyLimit > 0 ? Math.min(100, ((summary.cost_usd || 0) / budget.monthlyLimit) * 100) : 0;
 
   return (
     <div className="max-w-6xl mx-auto py-6 px-6 space-y-4">
@@ -146,6 +184,55 @@ export function UsagePage() {
           )}
         </Card>
       </div>
+
+      <Card>
+        <div className="flex items-center gap-2 mb-3">
+          <Bell size={16} className="text-[color:var(--accent)]" />
+          <div className="font-medium">预算预警</div>
+        </div>
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+          <div>
+            <label className="text-xs text-[color:var(--text-faint)] mb-1 block">每日预算 (USD)</label>
+            <Input type="number" min="0" step="0.5" value={budget.dailyLimit || ''} placeholder="0 = 不限制" onChange={(e) => handleBudgetChange('dailyLimit', e.target.value)} />
+            {budget.dailyLimit > 0 && (
+              <div className="mt-2">
+                <div className="flex justify-between text-xs text-[color:var(--text-faint)] mb-1">
+                  <span>今日 ${(today.cost_usd || 0).toFixed(4)}</span>
+                  <span>{dailyPct.toFixed(0)}%</span>
+                </div>
+                <div className="h-1.5 bg-[color:var(--bg-soft)] rounded-full overflow-hidden">
+                  <div className={`h-full rounded-full transition-all ${dailyPct >= 80 ? 'bg-red-500' : dailyPct >= 50 ? 'bg-amber-500' : 'bg-emerald-500'}`} style={{ width: `${dailyPct}%` }} />
+                </div>
+              </div>
+            )}
+          </div>
+          <div>
+            <label className="text-xs text-[color:var(--text-faint)] mb-1 block">本期预算 (USD)</label>
+            <Input type="number" min="0" step="1" value={budget.monthlyLimit || ''} placeholder="0 = 不限制" onChange={(e) => handleBudgetChange('monthlyLimit', e.target.value)} />
+            {budget.monthlyLimit > 0 && (
+              <div className="mt-2">
+                <div className="flex justify-between text-xs text-[color:var(--text-faint)] mb-1">
+                  <span>本期 ${(summary.cost_usd || 0).toFixed(4)}</span>
+                  <span>{monthlyPct.toFixed(0)}%</span>
+                </div>
+                <div className="h-1.5 bg-[color:var(--bg-soft)] rounded-full overflow-hidden">
+                  <div className={`h-full rounded-full transition-all ${monthlyPct >= 80 ? 'bg-red-500' : monthlyPct >= 50 ? 'bg-amber-500' : 'bg-emerald-500'}`} style={{ width: `${monthlyPct}%` }} />
+                </div>
+              </div>
+            )}
+          </div>
+          <div>
+            <label className="text-xs text-[color:var(--text-faint)] mb-1 block">预警阈值 (%)</label>
+            <Input type="number" min="10" max="100" step="5" value={budget.alertThreshold} onChange={(e) => handleBudgetChange('alertThreshold', e.target.value)} />
+            <div className="text-xs text-[color:var(--text-faint)] mt-1.5">达到预算的此比例时弹出提醒</div>
+          </div>
+        </div>
+        {(dailyPct >= (budget.alertThreshold || 80) || monthlyPct >= (budget.alertThreshold || 80)) && (
+          <div className="mt-3 px-3 py-2 rounded-lg bg-amber-500/10 border border-amber-500/30 flex items-center gap-2 text-sm text-amber-600 dark:text-amber-400">
+            <AlertTriangle size={16} /> 当前费用已接近或超过预算阈值，请注意控制用量
+          </div>
+        )}
+      </Card>
 
       <Card>
         <div className="font-medium mb-2">最近请求</div>

@@ -54,6 +54,7 @@ func main() {
 	api.PATCH("/sessions/:id", handler.UpdateSession)
 	api.DELETE("/sessions/:id", handler.DeleteSession)
 	api.GET("/sessions/:id/messages", handler.ListMessages)
+	api.GET("/messages/search", handler.SearchMessages)
 
 	api.POST("/chat", handler.Chat)
 	api.POST("/chat/batch", handler.BatchChat)

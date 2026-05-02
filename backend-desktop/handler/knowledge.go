@@ -12,6 +12,8 @@ import (
 	"unicode/utf8"
 
 	"github.com/gin-gonic/gin"
+	pdf "github.com/ledongthuc/pdf"
+	"github.com/nguyenthenguyen/docx"
 	"lingxi-agent/db"
 )
 
@@ -108,12 +110,70 @@ func extractSummary(content string) string {
 	return summary
 }
 
+// extractTextFromDocx 从 .docx 文件提取纯文本
+func extractTextFromDocx(data []byte) (string, error) {
+	tmpFile, err := os.CreateTemp("", "kb-*.docx")
+	if err != nil {
+		return "", err
+	}
+	defer os.Remove(tmpFile.Name())
+	if _, err := tmpFile.Write(data); err != nil {
+		tmpFile.Close()
+		return "", err
+	}
+	tmpFile.Close()
+
+	r, err := docx.ReadDocxFile(tmpFile.Name())
+	if err != nil {
+		return "", err
+	}
+	defer r.Close()
+	return r.Editable().GetContent(), nil
+}
+
+// extractTextFromPDF 从 .pdf 文件提取纯文本
+func extractTextFromPDF(data []byte) (string, error) {
+	tmpFile, err := os.CreateTemp("", "kb-*.pdf")
+	if err != nil {
+		return "", err
+	}
+	defer os.Remove(tmpFile.Name())
+	if _, err := tmpFile.Write(data); err != nil {
+		tmpFile.Close()
+		return "", err
+	}
+	tmpFile.Close()
+
+	f, reader, err := pdf.Open(tmpFile.Name())
+	if err != nil {
+		return "", err
+	}
+	defer f.Close()
+
+	var sb strings.Builder
+	for i := 1; i <= reader.NumPage(); i++ {
+		page := reader.Page(i)
+		if page.V.IsNull() {
+			continue
+		}
+		text, err := page.GetPlainText(nil)
+		if err != nil {
+			continue
+		}
+		sb.WriteString(text)
+		sb.WriteString("\n")
+	}
+	return sb.String(), nil
+}
+
 // categoryFromExt 根据文件扩展名推断分类
 func categoryFromExt(ext string) string {
 	switch strings.ToLower(ext) {
 	case ".csv", ".tsv", ".json", ".xml":
 		return "data"
 	case ".md", ".txt", ".rst":
+		return "docs"
+	case ".pdf", ".docx", ".pptx":
 		return "docs"
 	default:
 		return "docs"
@@ -149,9 +209,9 @@ func UploadKnowledge(c *gin.Context) {
 	}
 
 	ext := strings.ToLower(filepath.Ext(header.Filename))
-	allowed := map[string]bool{".md": true, ".txt": true, ".csv": true, ".tsv": true, ".json": true}
+	allowed := map[string]bool{".md": true, ".txt": true, ".csv": true, ".tsv": true, ".json": true, ".pdf": true, ".docx": true}
 	if !allowed[ext] {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "仅支持 .md .txt .csv .tsv .json 格式"})
+		c.JSON(http.StatusBadRequest, gin.H{"error": "仅支持 .md .txt .csv .tsv .json .pdf .docx 格式"})
 		return
 	}
 
@@ -162,12 +222,28 @@ func UploadKnowledge(c *gin.Context) {
 		return
 	}
 
-	// 检查是否为有效 UTF-8
-	if !utf8.Valid(buf) {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "文件必须是 UTF-8 编码"})
-		return
+	var content string
+	isBinary := ext == ".pdf" || ext == ".docx"
+
+	if isBinary {
+		var extractErr error
+		switch ext {
+		case ".pdf":
+			content, extractErr = extractTextFromPDF(buf)
+		case ".docx":
+			content, extractErr = extractTextFromDocx(buf)
+		}
+		if extractErr != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "文件解析失败: " + extractErr.Error()})
+			return
+		}
+	} else {
+		if !utf8.Valid(buf) {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "文件必须是 UTF-8 编码"})
+			return
+		}
+		content = string(buf)
 	}
-	content := string(buf)
 
 	// 确定分类
 	category := c.PostForm("category")
@@ -193,6 +269,12 @@ func UploadKnowledge(c *gin.Context) {
 	if err := os.WriteFile(destPath, buf, 0644); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "保存文件失败"})
 		return
+	}
+
+	// For binary formats, also save an extracted .txt alongside for preview
+	if isBinary && content != "" {
+		txtPath := destPath + ".extracted.txt"
+		os.WriteFile(txtPath, []byte(content), 0644)
 	}
 
 	// 元数据
@@ -273,16 +355,26 @@ func PreviewKnowledge(c *gin.Context) {
 	relPath, _ := item["file_path"].(string)
 	absPath := filepath.Join(knowledgeDir(), relPath)
 
-	f, err := os.Open(absPath)
+	// For binary formats, try reading the extracted text file first
+	readPath := absPath
+	fileExt := strings.ToLower(filepath.Ext(absPath))
+	if fileExt == ".pdf" || fileExt == ".docx" {
+		extractedPath := absPath + ".extracted.txt"
+		if _, err := os.Stat(extractedPath); err == nil {
+			readPath = extractedPath
+		}
+	}
+
+	f, err := os.Open(readPath)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "无法读取文件"})
 		return
 	}
 	defer f.Close()
 
-	// 读取前 200 行
 	var lines []string
 	scanner := bufio.NewScanner(f)
+	scanner.Buffer(make([]byte, 1024*1024), 1024*1024)
 	for scanner.Scan() && len(lines) < 200 {
 		lines = append(lines, scanner.Text())
 	}

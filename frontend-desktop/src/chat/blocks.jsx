@@ -1,13 +1,15 @@
-import { useEffect, useState, useMemo } from 'react';
+import { createElement, useCallback, useMemo, useState } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
-import { motion, AnimatePresence } from 'framer-motion';
+import { Highlight, themes } from 'prism-react-renderer';
 import {
   Brain, Wrench, Search, Globe, FileText, Code2, Pencil,
   ListTodo, FolderOpen, Terminal, ChevronDown, ChevronRight,
-  Loader2, CheckCircle2, AlertCircle, Cpu, Coins, Clock,
+  Loader2, CheckCircle2, AlertCircle, Cpu, Coins, Clock, Copy, Check,
 } from 'lucide-react';
-import { Badge, cn } from '../ui/primitives';
+import { Badge } from '../ui/primitives';
+import { cn } from '../ui/cn';
+import { formatNum } from './blockUtils';
 
 const TOOL_ICONS = {
   Bash: Terminal, Write: Pencil, Edit: Pencil, MultiEdit: Pencil,
@@ -24,8 +26,8 @@ function iconForTool(name) {
 }
 
 export function ThinkingCard({ text, live }) {
-  const [open, setOpen] = useState(live); // 流式时默认展开，结束后收起
-  useEffect(() => { if (!live) setOpen(false); }, [live]);
+  const [manualOpen, setManualOpen] = useState(false);
+  const open = live || manualOpen;
   if (!text && !live) return null;
   const lines = (text || '').split('\n');
   const preview = lines.slice(-3).join('\n').slice(-180);
@@ -33,7 +35,7 @@ export function ThinkingCard({ text, live }) {
     <div className="surface-soft my-2 overflow-hidden border border-[color:var(--line)]">
       <button
         className="w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-black/5 dark:hover:bg-white/5 transition"
-        onClick={() => setOpen(!open)}
+        onClick={() => setManualOpen((v) => !v)}
       >
         <div className="w-7 h-7 rounded-md bg-[color:var(--accent-soft)] text-[color:var(--accent)] flex items-center justify-center">
           <Brain size={16} />
@@ -51,24 +53,17 @@ export function ThinkingCard({ text, live }) {
         </div>
         {open ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
       </button>
-      <AnimatePresence initial={false}>
-        {open && (
-          <motion.div
-            initial={{ height: 0, opacity: 0 }}
-            animate={{ height: 'auto', opacity: 1 }}
-            exit={{ height: 0, opacity: 0 }}
-            className="overflow-hidden"
-          >
-            <div className={cn(
-              'px-4 pb-3 pt-1 text-[13px] leading-relaxed whitespace-pre-wrap font-mono',
-              'text-[color:var(--text-soft)]',
-              live && 'thinking-shimmer',
-            )}>
-              {text || '组织思路…'}
-            </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
+      {open && (
+        <div className="overflow-hidden animate-rise">
+          <div className={cn(
+            'px-4 pb-3 pt-1 text-[13px] leading-relaxed whitespace-pre-wrap font-mono',
+            'text-[color:var(--text-soft)]',
+            live && 'thinking-shimmer',
+          )}>
+            {text || '组织思路…'}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -83,7 +78,7 @@ function toolCategory(name) {
 }
 
 export function ToolCard({ name, label, done, startedAt, endedAt, input, ms, status }) {
-  const Icon = iconForTool(name);
+  const icon = iconForTool(name);
   const [open, setOpen] = useState(false);
   const dur = ms != null ? ms : (endedAt && startedAt ? Math.max(1, endedAt - startedAt) : null);
   const cat = toolCategory(name);
@@ -92,8 +87,7 @@ export function ToolCard({ name, label, done, startedAt, endedAt, input, ms, sta
   const showDetail = Boolean(input);
 
   return (
-    <motion.div
-      initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }}
+    <div
       className={cn(
         'surface-soft my-2 border overflow-hidden',
         failed ? 'border-red-500/40' : 'border-[color:var(--line)]',
@@ -115,7 +109,7 @@ export function ToolCard({ name, label, done, startedAt, endedAt, input, ms, sta
               ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400'
               : 'bg-[color:var(--accent-soft)] text-[color:var(--accent)] shadow-glow',
         )}>
-          <Icon size={16} />
+          {createElement(icon, { size: 16 })}
         </div>
         <div className="flex-1 min-w-0">
           <div className="text-sm font-medium flex items-center gap-2">
@@ -143,33 +137,79 @@ export function ToolCard({ name, label, done, startedAt, endedAt, input, ms, sta
           {showDetail && (open ? <ChevronDown size={14} /> : <ChevronRight size={14} />)}
         </div>
       </button>
-      <AnimatePresence initial={false}>
-        {open && showDetail && (
-          <motion.div
-            initial={{ height: 0, opacity: 0 }}
-            animate={{ height: 'auto', opacity: 1 }}
-            exit={{ height: 0, opacity: 0 }}
-            className="overflow-hidden"
-          >
-            <div className="px-4 pb-3 pt-0 text-[12px] font-mono text-[color:var(--text-soft)] whitespace-pre-wrap break-all">
-              <div className="text-[10px] uppercase tracking-wide text-[color:var(--text-faint)] mb-1">输入摘要</div>
-              <div>{input}</div>
-              <div className="mt-1 text-[10px] text-[color:var(--text-faint)]">
-                工具: {name}
-              </div>
+      {open && showDetail && (
+        <div className="overflow-hidden animate-rise">
+          <div className="px-4 pb-3 pt-0 text-[12px] font-mono text-[color:var(--text-soft)] whitespace-pre-wrap break-all">
+            <div className="text-[10px] uppercase tracking-wide text-[color:var(--text-faint)] mb-1">输入摘要</div>
+            <div>{input}</div>
+            <div className="mt-1 text-[10px] text-[color:var(--text-faint)]">
+              工具: {name}
             </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
-    </motion.div>
+          </div>
+        </div>
+      )}
+    </div>
   );
 }
+
+function CodeBlock({ children, className: langClass }) {
+  const [copied, setCopied] = useState(false);
+  const lang = (langClass || '').replace('language-', '') || 'text';
+  const code = String(children).replace(/\n$/, '');
+
+  const handleCopy = useCallback(() => {
+    navigator.clipboard.writeText(code).then(() => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1800);
+    });
+  }, [code]);
+
+  return (
+    <div className="group/code relative my-2">
+      <div className="flex items-center justify-between px-3 py-1.5 bg-[color:var(--bg-soft)] border border-b-0 border-[color:var(--line)] rounded-t-lg text-xs text-[color:var(--text-faint)]">
+        <span className="font-mono">{lang}</span>
+        <button
+          onClick={handleCopy}
+          className="flex items-center gap-1 px-1.5 py-0.5 rounded hover:bg-[color:var(--line)] transition text-[color:var(--text-faint)] hover:text-[color:var(--text-soft)]"
+        >
+          {copied ? <><Check size={12} className="text-emerald-500" /> 已复制</> : <><Copy size={12} /> 复制</>}
+        </button>
+      </div>
+      <Highlight theme={themes.nightOwl} code={code} language={lang}>
+        {({ tokens, getLineProps, getTokenProps }) => (
+          <pre className="!mt-0 !rounded-t-none overflow-x-auto p-3 text-[13px] leading-relaxed bg-[#011627] border border-t-0 border-[color:var(--line)] rounded-b-lg">
+            <code>
+              {tokens.map((line, i) => (
+                <div key={i} {...getLineProps({ line })}>
+                  {line.map((token, key) => (
+                    <span key={key} {...getTokenProps({ token })} />
+                  ))}
+                </div>
+              ))}
+            </code>
+          </pre>
+        )}
+      </Highlight>
+    </div>
+  );
+}
+
+const MD_COMPONENTS = {
+  code({ children, className, ...rest }) {
+    const isBlock = className?.startsWith('language-');
+    if (isBlock) return <CodeBlock className={className}>{children}</CodeBlock>;
+    return <code className={className} {...rest}>{children}</code>;
+  },
+  pre({ children }) {
+    return <>{children}</>;
+  },
+};
 
 export function TextBlock({ text, live }) {
   if (!text) return null;
   return (
     <div className={cn('md-block text-[15px] leading-7', live && 'caret')}>
-      <ReactMarkdown remarkPlugins={[remarkGfm]}>{text}</ReactMarkdown>
+      <ReactMarkdown remarkPlugins={[remarkGfm]} components={MD_COMPONENTS}>{text}</ReactMarkdown>
     </div>
   );
 }
@@ -187,16 +227,6 @@ export function BlocksRenderer({ blocks, live }) {
       })}
     </div>
   );
-}
-
-// 解析持久化的 assistant content：可能是 JSON blocks 数组，也可能是普通文本
-export function parseAssistantContent(content) {
-  if (!content) return [];
-  try {
-    const arr = JSON.parse(content);
-    if (Array.isArray(arr)) return arr;
-  } catch {}
-  return [{ type: 'text', text: String(content) }];
 }
 
 // ── Usage 徽章（每条 assistant 消息底部展示）─────────────────
@@ -240,9 +270,3 @@ export function UsageFooter({ usageJSON, modelOverride }) {
   );
 }
 
-export function formatNum(n) {
-  if (!n) return 0;
-  if (n < 1000) return n;
-  if (n < 1000000) return (n / 1000).toFixed(1) + 'k';
-  return (n / 1000000).toFixed(2) + 'M';
-}

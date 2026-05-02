@@ -2,8 +2,9 @@ import { useEffect, useMemo, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   Sparkles, Plus, Trash2, Edit3, Bot, Brain, BookOpen, Plug,
-  ArrowLeft, Wand2, Check, X, Shield,
+  ArrowLeft, Wand2, Check, X, Shield, LayoutGrid,
 } from 'lucide-react';
+import { cn } from './ui/cn';
 import { api } from './api/client';
 import { Button, Input, Textarea, Select, Badge, Card, Modal } from './ui/primitives';
 
@@ -12,6 +13,50 @@ const PROMPT_TEMPLATES = [
   { name: '代码审查员', prompt: '你是资深工程师，擅长代码审查、性能优化、最佳实践。指出问题时简洁、精确，并给出可执行的修改建议。' },
   { name: '产品经理', prompt: '你是产品经理，擅长用户研究、需求拆解、PRD 撰写。回答简洁有条理，关注用户价值与可行性。' },
   { name: '内容创作者', prompt: '你是内容创作者，擅长撰写公众号、小红书、视频脚本。语言生动、有感染力，关注流量与用户共鸣。' },
+];
+
+const TEMPLATE_MARKET = [
+  {
+    category: '商业办公',
+    icon: '💼',
+    items: [
+      { name: '销售助理', avatar: '🎯', desc: '产品话术、客户跟进、商务邮件', prompt: '你是经验丰富的销售助理，擅长撰写产品话术、客户跟进策略、商务邮件。语气专业、温暖、富有亲和力。' },
+      { name: '商业分析师', avatar: '📊', desc: '数据分析、市场研究、竞品对比', prompt: '你是资深商业分析师，擅长数据分析、市场趋势研究、竞品对比、战略建议。回答要有数据支撑、逻辑清晰、可操作性强。' },
+      { name: '人力资源', avatar: '🤝', desc: 'JD 撰写、面试问题、员工管理', prompt: '你是人力资源专家，擅长撰写岗位描述、设计面试问题、提供员工管理建议。语气专业、注重合规、关注团队文化。' },
+      { name: '法务顾问', avatar: '⚖️', desc: '合同审阅、法律风险、条款建议', prompt: '你是企业法务顾问，擅长合同条款审阅、法律风险分析、合规建议。回答严谨专业、注意免责声明。' },
+    ],
+  },
+  {
+    category: '技术开发',
+    icon: '💻',
+    items: [
+      { name: '代码审查员', avatar: '🔍', desc: '代码审查、性能优化、最佳实践', prompt: '你是资深工程师，擅长代码审查、性能优化、最佳实践。指出问题时简洁、精确，并给出可执行的修改建议。' },
+      { name: '架构师', avatar: '🏗️', desc: '系统设计、技术选型、可扩展方案', prompt: '你是高级系统架构师，擅长分布式系统设计、技术选型评估、性能瓶颈分析。回答要兼顾当下可行性与长远演进。' },
+      { name: 'DevOps 专家', avatar: '🔧', desc: 'CI/CD、Docker、K8s、监控', prompt: '你是 DevOps 专家，精通 Docker、Kubernetes、CI/CD 流水线、监控告警。提供可直接执行的命令和配置。' },
+      { name: '安全工程师', avatar: '🛡️', desc: '漏洞分析、安全审计、加固方案', prompt: '你是信息安全工程师，擅长漏洞分析、渗透测试方法论、安全加固方案。回答注重实操、提供修复优先级建议。' },
+      { name: 'DBA', avatar: '🗃️', desc: 'SQL 优化、数据库设计、故障排查', prompt: '你是资深 DBA，精通 MySQL、PostgreSQL、Redis。擅长慢查询优化、索引设计、数据库架构设计与故障排查。' },
+    ],
+  },
+  {
+    category: '内容创意',
+    icon: '🎨',
+    items: [
+      { name: '内容创作者', avatar: '✍️', desc: '公众号、小红书、视频脚本', prompt: '你是内容创作者，擅长撰写公众号、小红书、视频脚本。语言生动、有感染力，关注流量与用户共鸣。' },
+      { name: '文案策划', avatar: '📝', desc: '品牌文案、广告语、营销策划', prompt: '你是创意文案策划，擅长品牌命名、广告语创作、营销活动策划。文风灵活多变，能根据品牌调性切换风格。' },
+      { name: '翻译专家', avatar: '🌐', desc: '中英互译、本地化、技术文档', prompt: '你是专业翻译，擅长中英互译。翻译时注重信达雅，保留原文语气与风格。技术术语要准确，商业文案要地道。' },
+      { name: '学术论文助手', avatar: '🎓', desc: '论文润色、文献综述、方法论', prompt: '你是学术写作助手，擅长论文润色、文献综述撰写、研究方法论建议。遵循学术规范、引用格式正确、逻辑严密。' },
+    ],
+  },
+  {
+    category: '生活效率',
+    icon: '🚀',
+    items: [
+      { name: '产品经理', avatar: '📋', desc: '需求拆解、PRD 撰写、用户研究', prompt: '你是产品经理，擅长用户研究、需求拆解、PRD 撰写。回答简洁有条理，关注用户价值与可行性。' },
+      { name: '健身教练', avatar: '💪', desc: '训练计划、饮食建议、运动科学', prompt: '你是专业健身教练，擅长制定个性化训练计划、营养饮食建议。回答基于运动科学，安全第一。' },
+      { name: '理财顾问', avatar: '💰', desc: '投资分析、理财规划、风险评估', prompt: '你是理财规划师，擅长个人财务规划、投资组合建议、风险评估。回答客观中立，强调风险提示，不提供具体投资标的建议。' },
+      { name: '旅行规划师', avatar: '✈️', desc: '行程规划、签证攻略、当地推荐', prompt: '你是旅行规划师，擅长制定旅行行程、预算规划、当地美食与景点推荐。根据用户偏好和预算给出个性化方案。' },
+    ],
+  },
 ];
 
 const EMOJIS = ['✦', '🤖', '🎯', '🧠', '💼', '🚀', '🎨', '📊', '🔬', '⚡', '🌟', '🦾'];
@@ -32,6 +77,7 @@ const EMPTY = {
 export default function AgentFactoryPage({ onBack }) {
   const [list, setList] = useState([]);
   const [editing, setEditing] = useState(null);
+  const [showTemplates, setShowTemplates] = useState(false);
 
   const refresh = async () => {
     const data = await api.listAgents();
@@ -52,9 +98,19 @@ export default function AgentFactoryPage({ onBack }) {
     refresh();
   };
 
+  const createFromTemplate = (tpl) => {
+    setShowTemplates(false);
+    setEditing({
+      ...EMPTY,
+      name: tpl.name,
+      avatar: tpl.avatar || '✦',
+      description: tpl.desc || '',
+      system_prompt: tpl.prompt,
+    });
+  };
+
   return (
     <div className="max-w-6xl mx-auto">
-      {/* Hero */}
       <div className="relative overflow-hidden rounded-2xl mb-6 p-6 surface-grad">
         <div className="absolute -right-20 -top-20 w-64 h-64 rounded-full bg-gradient-to-br from-[color:var(--accent)]/30 to-transparent blur-3xl pointer-events-none" />
         <div className="relative flex items-center gap-4">
@@ -70,9 +126,12 @@ export default function AgentFactoryPage({ onBack }) {
               定制专属智能体：角色 · 技能 · MCP · 知识库 · 模型，一站配置，精准落地。
             </div>
           </div>
+          <Button variant="outline" onClick={() => setShowTemplates(true)}><LayoutGrid size={14} /> 模板市场</Button>
           <Button onClick={() => setEditing({ ...EMPTY })}><Plus size={16} />新建智能体</Button>
         </div>
       </div>
+
+      <TemplateMarket open={showTemplates} onClose={() => setShowTemplates(false)} onCreate={createFromTemplate} />
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
         <AnimatePresence>
@@ -373,6 +432,72 @@ function Field({ label, children }) {
       <div className="text-xs text-[color:var(--text-soft)] mb-1">{label}</div>
       {children}
     </div>
+  );
+}
+
+function TemplateMarket({ open, onClose, onCreate }) {
+  const [activeCategory, setActiveCategory] = useState(null);
+
+  if (!open) return null;
+
+  return (
+    <Modal open={open} onClose={onClose} title="智能体模板市场" width={720}>
+      <div className="space-y-5">
+        <div className="flex gap-2 flex-wrap">
+          <button
+            onClick={() => setActiveCategory(null)}
+            className={cn(
+              'px-3 py-1.5 rounded-lg text-sm transition border',
+              !activeCategory ? 'bg-[color:var(--accent-soft)] border-[color:var(--accent)] text-[color:var(--accent)] font-medium' : 'border-[color:var(--line)] text-[color:var(--text-soft)] hover:bg-[color:var(--bg-soft)]'
+            )}
+          >全部</button>
+          {TEMPLATE_MARKET.map(cat => (
+            <button
+              key={cat.category}
+              onClick={() => setActiveCategory(cat.category)}
+              className={cn(
+                'px-3 py-1.5 rounded-lg text-sm transition border',
+                activeCategory === cat.category ? 'bg-[color:var(--accent-soft)] border-[color:var(--accent)] text-[color:var(--accent)] font-medium' : 'border-[color:var(--line)] text-[color:var(--text-soft)] hover:bg-[color:var(--bg-soft)]'
+              )}
+            >{cat.icon} {cat.category}</button>
+          ))}
+        </div>
+
+        <div className="max-h-[420px] overflow-y-auto scrollable space-y-4">
+          {TEMPLATE_MARKET
+            .filter(cat => !activeCategory || cat.category === activeCategory)
+            .map(cat => (
+              <div key={cat.category}>
+                <div className="text-xs font-medium text-[color:var(--text-faint)] uppercase tracking-wide mb-2 flex items-center gap-1.5">
+                  <span>{cat.icon}</span> {cat.category}
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                  {cat.items.map(tpl => (
+                    <button
+                      key={tpl.name}
+                      onClick={() => onCreate(tpl)}
+                      className="surface p-3 text-left hover:shadow-glow hover:-translate-y-0.5 transition-all group"
+                    >
+                      <div className="flex items-center gap-2.5 mb-1.5">
+                        <span className="w-9 h-9 rounded-xl bg-gradient-to-br from-[color:var(--accent-soft)] to-transparent flex items-center justify-center text-lg">
+                          {tpl.avatar}
+                        </span>
+                        <div>
+                          <div className="text-sm font-medium">{tpl.name}</div>
+                          <div className="text-xs text-[color:var(--text-faint)]">{tpl.desc}</div>
+                        </div>
+                      </div>
+                      <div className="text-[11px] text-[color:var(--text-faint)] line-clamp-2 group-hover:text-[color:var(--text-soft)] transition">
+                        {tpl.prompt.slice(0, 80)}…
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            ))}
+        </div>
+      </div>
+    </Modal>
   );
 }
 

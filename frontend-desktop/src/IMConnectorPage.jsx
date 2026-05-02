@@ -1,4 +1,10 @@
 import { useState, useEffect } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
+import {
+  Link2, Plus, Pencil, Trash2, Power, PowerOff, Loader2, Info, Radio,
+} from 'lucide-react';
+import { Button, Card, Badge, Modal, Input, Select } from './ui/primitives';
+import { cn } from './ui/cn';
 
 const PLATFORMS = [
   { id: 'dingtalk', label: '钉钉', icon: '📌', fields: [
@@ -25,44 +31,6 @@ const SESSION_MODES = [
   { value: 'stateless',      label: '无状态',     desc: '每条消息独立，不保留任何上下文' },
 ];
 
-function ConnectorCard({ connector, onToggle, onEdit, onDelete }) {
-  const platform = PLATFORMS.find(p => p.id === connector.platform);
-  return (
-    <div className={`connector-card${connector.enabled ? ' enabled' : ''}`}>
-      <div className="connector-card-header">
-        <span className="connector-platform-icon">{platform?.icon || '🔌'}</span>
-        <div className="connector-card-info">
-          <div className="connector-platform-name">{platform?.label || connector.platform}</div>
-          <div className={`connector-status-badge${connector.running ? ' running' : connector.enabled ? ' enabled' : ''}`}>
-            {connector.running ? '● 运行中' : connector.enabled ? '○ 已启用' : '○ 已停用'}
-          </div>
-        </div>
-        <div className="connector-card-actions">
-          <button className="connector-edit-btn" onClick={() => onEdit(connector)} title="编辑配置">✏️</button>
-          <button
-            className={`connector-toggle-btn${connector.enabled ? ' active' : ''}`}
-            onClick={() => onToggle(connector)}
-            title={connector.enabled ? '停用' : '启用'}
-          >
-            {connector.enabled ? '停用' : '启用'}
-          </button>
-          <button className="connector-delete-btn" onClick={() => onDelete(connector)} title="删除">✕</button>
-        </div>
-      </div>
-      {connector.enabled && (
-        <div className="connector-card-meta">
-          <span className="connector-meta-item">
-            会话模式：{SESSION_MODES.find(m => m.value === (connector.parsedConfig?.session_mode || 'per_group'))?.label || '按群共享'}
-          </span>
-          <span className="connector-meta-item">
-            TTL：{connector.parsedConfig?.session_ttl_hours || 24}h
-          </span>
-        </div>
-      )}
-    </div>
-  );
-}
-
 function ConnectorForm({ initial, onSave, onCancel }) {
   const isEdit = !!initial;
   const [platform, setPlatform] = useState(initial?.platform || 'dingtalk');
@@ -83,10 +51,7 @@ function ConnectorForm({ initial, onSave, onCancel }) {
   const handleSave = async () => {
     setError('');
     for (const f of platformDef.fields) {
-      if (!fields[f.key]?.trim()) {
-        setError(`请填写 ${f.label}`);
-        return;
-      }
+      if (!fields[f.key]?.trim()) { setError(`请填写 ${f.label}`); return; }
     }
     setSaving(true);
     try {
@@ -96,37 +61,33 @@ function ConnectorForm({ initial, onSave, onCancel }) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ platform, config }),
       });
-      if (!r.ok) {
-        const d = await r.json();
-        setError(d.error || '保存失败');
-        return;
-      }
+      if (!r.ok) { const d = await r.json(); setError(d.error || '保存失败'); return; }
       onSave();
-    } catch (e) {
-      setError('保存失败：' + e.message);
-    } finally {
-      setSaving(false);
-    }
+    } catch (e) { setError('保存失败：' + e.message); }
+    finally { setSaving(false); }
   };
 
-  return (
-    <div className="connector-form-overlay" onClick={e => e.target === e.currentTarget && onCancel()}>
-      <div className="connector-form-modal">
-        <div className="connector-form-header">
-          <h3>{isEdit ? '编辑连接器' : '添加 IM 连接器'}</h3>
-          <button className="connector-form-close" onClick={onCancel}>✕</button>
-        </div>
+  const tips = {
+    wecom: { icon: Info, text: '企业微信需要公网 IP 或内网穿透，回调地址填写：', code: 'http://你的IP:3001/api/wecom/callback' },
+    dingtalk: { icon: Info, text: '钉钉 Stream 模式无需公网 IP，在开发者后台将消息接收模式设为 Stream 即可。' },
+    feishu: { icon: Info, text: '飞书长连接模式无需公网 IP，在开发者后台开启机器人能力并订阅「接收消息」事件即可。' },
+  };
+  const tip = tips[platform];
 
+  return (
+    <Modal open onClose={onCancel} title={isEdit ? '编辑连接器' : '添加 IM 连接器'} width={520}>
+      <div className="space-y-5">
         {!isEdit && (
-          <div className="connector-form-section">
-            <label className="connector-form-label">平台</label>
-            <div className="connector-platform-tabs">
+          <div>
+            <div className="text-xs font-medium text-[color:var(--text-faint)] uppercase tracking-wide mb-2">平台</div>
+            <div className="flex gap-2 flex-wrap">
               {PLATFORMS.map(p => (
-                <button
-                  key={p.id}
-                  className={`connector-platform-tab${platform === p.id ? ' active' : ''}`}
-                  onClick={() => { setPlatform(p.id); setFields({}); }}
-                >
+                <button key={p.id} onClick={() => { setPlatform(p.id); setFields({}); }} className={cn(
+                  'px-3 py-2 rounded-lg border text-sm transition',
+                  platform === p.id
+                    ? 'border-[color:var(--accent)] bg-[color:var(--accent-soft)] text-[color:var(--accent)] font-medium'
+                    : 'border-[color:var(--line)] text-[color:var(--text-soft)] hover:bg-[color:var(--bg-soft)]'
+                )}>
                   {p.icon} {p.label}
                 </button>
               ))}
@@ -134,96 +95,67 @@ function ConnectorForm({ initial, onSave, onCancel }) {
           </div>
         )}
 
-        <div className="connector-form-section">
-          <div className="connector-form-section-title">平台凭证</div>
-          {platformDef.fields.map(f => (
-            <div key={f.key} className="connector-form-field">
-              <label className="connector-form-label">{f.label}</label>
-              <input
-                className="connector-form-input"
-                type={f.type}
-                placeholder={f.placeholder}
-                value={fields[f.key] || ''}
-                onChange={e => setFields(prev => ({ ...prev, [f.key]: e.target.value }))}
-                autoComplete="off"
-              />
-            </div>
-          ))}
+        <div>
+          <div className="text-xs font-medium text-[color:var(--text-faint)] uppercase tracking-wide mb-3 pb-1.5 border-b border-[color:var(--line)]">平台凭证</div>
+          <div className="space-y-3">
+            {platformDef.fields.map(f => (
+              <div key={f.key}>
+                <label className="text-xs font-medium text-[color:var(--text-soft)] mb-1 block">{f.label}</label>
+                <Input type={f.type} placeholder={f.placeholder} value={fields[f.key] || ''} onChange={e => setFields(prev => ({ ...prev, [f.key]: e.target.value }))} autoComplete="off" />
+              </div>
+            ))}
+          </div>
         </div>
 
-        <div className="connector-form-section">
-          <div className="connector-form-section-title">会话管理</div>
-          <div className="connector-form-field">
-            <label className="connector-form-label">会话粒度</label>
-            <div className="connector-mode-list">
-              {SESSION_MODES.map(m => (
-                <label key={m.value} className={`connector-mode-item${sessionMode === m.value ? ' active' : ''}`}>
-                  <input
-                    type="radio"
-                    name="session_mode"
-                    value={m.value}
-                    checked={sessionMode === m.value}
-                    onChange={() => setSessionMode(m.value)}
-                  />
-                  <div className="connector-mode-content">
-                    <span className="connector-mode-label">{m.label}</span>
-                    <span className="connector-mode-desc">{m.desc}</span>
-                  </div>
-                </label>
-              ))}
-            </div>
+        <div>
+          <div className="text-xs font-medium text-[color:var(--text-faint)] uppercase tracking-wide mb-3 pb-1.5 border-b border-[color:var(--line)]">会话管理</div>
+          <div className="text-xs font-medium text-[color:var(--text-soft)] mb-2">会话粒度</div>
+          <div className="space-y-2">
+            {SESSION_MODES.map(m => (
+              <label key={m.value} className={cn(
+                'flex items-start gap-2.5 p-3 rounded-lg border cursor-pointer transition',
+                sessionMode === m.value ? 'border-[color:var(--accent)] bg-[color:var(--accent-soft)]' : 'border-[color:var(--line)] hover:bg-[color:var(--bg-soft)]'
+              )}>
+                <input type="radio" name="session_mode" value={m.value} checked={sessionMode === m.value} onChange={() => setSessionMode(m.value)} className="mt-0.5 accent-[color:var(--accent)]" />
+                <div>
+                  <div className="text-sm font-medium">{m.label}</div>
+                  <div className="text-xs text-[color:var(--text-faint)]">{m.desc}</div>
+                </div>
+              </label>
+            ))}
           </div>
           {sessionMode !== 'stateless' && (
-            <div className="connector-form-field">
-              <label className="connector-form-label">
+            <div className="mt-3">
+              <label className="text-xs font-medium text-[color:var(--text-soft)] mb-1 block">
                 上下文有效期（小时）
-                <span className="connector-form-hint">超过此时间不活跃后自动开启新对话，0 表示永不重置</span>
+                <span className="font-normal text-[color:var(--text-faint)] ml-1">超过此时间不活跃后自动开启新对话，0 表示永不重置</span>
               </label>
-              <input
-                className="connector-form-input connector-form-input-sm"
-                type="number"
-                min="0"
-                max="720"
-                value={ttlHours}
-                onChange={e => setTtlHours(e.target.value)}
-              />
+              <Input type="number" min="0" max="720" className="w-32" value={ttlHours} onChange={e => setTtlHours(e.target.value)} />
             </div>
           )}
         </div>
 
-        {platform === 'wecom' && (
-          <div className="connector-form-tip">
-            <span className="connector-form-tip-icon">ℹ️</span>
-            企业微信需要公网 IP 或内网穿透，回调地址填写：<code>http://你的IP:3001/api/wecom/callback</code>
-          </div>
-        )}
-        {platform === 'dingtalk' && (
-          <div className="connector-form-tip">
-            <span className="connector-form-tip-icon">ℹ️</span>
-            钉钉 Stream 模式无需公网 IP，在开发者后台将消息接收模式设为 Stream 即可。
-          </div>
-        )}
-        {platform === 'feishu' && (
-          <div className="connector-form-tip">
-            <span className="connector-form-tip-icon">ℹ️</span>
-            飞书长连接模式无需公网 IP，在开发者后台开启机器人能力并订阅「接收消息」事件即可。
+        {tip && (
+          <div className="flex items-start gap-2 px-3 py-2.5 rounded-lg bg-blue-500/10 border border-blue-500/20 text-xs text-[color:var(--text-soft)] leading-relaxed">
+            <Info size={14} className="shrink-0 mt-0.5 text-blue-400" />
+            <span>{tip.text}{tip.code && <code className="bg-blue-500/10 px-1.5 py-0.5 rounded font-mono text-[11px] ml-1">{tip.code}</code>}</span>
           </div>
         )}
 
-        {error && <div className="connector-form-error">{error}</div>}
+        {error && <div className="px-3 py-2.5 rounded-lg bg-red-500/10 border border-red-500/30 text-red-500 text-sm">{error}</div>}
 
-        <div className="connector-form-footer">
-          <button className="connector-form-cancel" onClick={onCancel}>取消</button>
-          <button className="connector-form-save" onClick={handleSave} disabled={saving}>
-            {saving ? '保存中...' : '保存'}
-          </button>
+        <div className="flex justify-end gap-2 pt-3 border-t border-[color:var(--line)]">
+          <Button variant="outline" onClick={onCancel}>取消</Button>
+          <Button onClick={handleSave} disabled={saving}>
+            {saving ? <><Loader2 size={14} className="animate-spin" />保存中...</> : '保存'}
+          </Button>
         </div>
       </div>
-    </div>
+    </Modal>
   );
 }
 
-export default function IMConnectorPage({ onBack }) {
+export default function IMConnectorPage() {
   const [connectors, setConnectors] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
@@ -241,9 +173,7 @@ export default function IMConnectorPage({ onBack }) {
         return { ...c, parsedConfig };
       });
       setConnectors(list);
-    } finally {
-      setLoading(false);
-    }
+    } finally { setLoading(false); }
   };
 
   useEffect(() => { fetchConnectors(); }, []);
@@ -254,9 +184,7 @@ export default function IMConnectorPage({ onBack }) {
       const action = connector.enabled ? 'disable' : 'enable';
       const r = await fetch(`/api/im-connectors/${connector.platform}/${action}`, { method: 'PUT' });
       if (r.ok) await fetchConnectors();
-    } finally {
-      setTogglingId(null);
-    }
+    } finally { setTogglingId(null); }
   };
 
   const handleDelete = async (connector) => {
@@ -265,71 +193,97 @@ export default function IMConnectorPage({ onBack }) {
     await fetchConnectors();
   };
 
-  const handleEdit = (connector) => {
-    setEditingConnector(connector);
-    setShowForm(true);
-  };
-
-  const handleFormSave = async () => {
-    setShowForm(false);
-    setEditingConnector(null);
-    await fetchConnectors();
-  };
-
-  const handleFormCancel = () => {
-    setShowForm(false);
-    setEditingConnector(null);
-  };
-
   return (
-    <div className="page-container">
+    <div className="max-w-5xl mx-auto">
       {showForm && (
         <ConnectorForm
           initial={editingConnector}
-          onSave={handleFormSave}
-          onCancel={handleFormCancel}
+          onSave={async () => { setShowForm(false); setEditingConnector(null); await fetchConnectors(); }}
+          onCancel={() => { setShowForm(false); setEditingConnector(null); }}
         />
       )}
 
-      <div className="page-header">
-        <button className="back-btn" onClick={onBack}>← 返回</button>
-        <h2 className="page-title">
-          <span className="page-title-icon">🔗</span>
-          IM 连接器
-        </h2>
-        <button className="add-connector-btn" onClick={() => { setEditingConnector(null); setShowForm(true); }}>
-          ＋ 添加连接器
-        </button>
-      </div>
-
-      <div className="page-desc">
-        连接钉钉、飞书、企业微信等 IM 平台，让 AI 助理直接在群聊中响应消息、执行技能。
-      </div>
-
-      <div className="page-body">
-        {loading ? (
-          <div className="page-loading">加载中...</div>
-        ) : connectors.length === 0 ? (
-          <div className="connector-empty">
-            <div className="connector-empty-icon">🔌</div>
-            <div className="connector-empty-title">还没有配置任何 IM 连接器</div>
-            <div className="connector-empty-desc">点击右上角「添加连接器」开始配置</div>
-            <button className="connector-empty-btn" onClick={() => setShowForm(true)}>添加第一个连接器</button>
+      <div className="relative overflow-hidden rounded-2xl mb-6 p-6 surface-grad">
+        <div className="absolute -right-20 -top-20 w-64 h-64 rounded-full bg-gradient-to-br from-[color:var(--accent)]/30 to-transparent blur-3xl pointer-events-none" />
+        <div className="relative flex items-center gap-4">
+          <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-[color:var(--accent)] to-[#5e8bff] text-white flex items-center justify-center shadow-glow">
+            <Link2 size={26} />
           </div>
-        ) : (
-          <div className="connector-list">
+          <div className="flex-1">
+            <div className="text-2xl font-semibold tracking-tight text-gradient">IM 连接器</div>
+            <div className="text-sm text-[color:var(--text-soft)]">连接钉钉、飞书、企业微信，让 AI 助理直接在群聊中响应</div>
+          </div>
+          <Button onClick={() => { setEditingConnector(null); setShowForm(true); }}>
+            <Plus size={14} /> 添加连接器
+          </Button>
+        </div>
+      </div>
+
+      {loading ? (
+        <div className="py-20 text-center text-[color:var(--text-faint)]">
+          <Loader2 size={24} className="animate-spin mx-auto mb-3" />加载中...
+        </div>
+      ) : connectors.length === 0 ? (
+        <div className="py-20 text-center">
+          <Link2 size={40} className="mx-auto mb-3 text-[color:var(--accent)] opacity-50" />
+          <p className="text-[color:var(--text-soft)]">还没有配置任何 IM 连接器</p>
+          <p className="text-xs text-[color:var(--text-faint)] mt-1">点击上方「添加连接器」开始配置</p>
+          <Button className="mt-4" onClick={() => setShowForm(true)}>
+            <Plus size={14} /> 添加第一个连接器
+          </Button>
+        </div>
+      ) : (
+        <div className="space-y-3">
+          <AnimatePresence>
             {connectors.map(c => (
-              <ConnectorCard
-                key={c.platform}
-                connector={{ ...c, _toggling: togglingId === c.platform }}
-                onToggle={handleToggle}
-                onEdit={handleEdit}
-                onDelete={handleDelete}
-              />
+              <motion.div key={c.platform} layout initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, scale: 0.95 }}>
+                <ConnectorCard
+                  connector={{ ...c, _toggling: togglingId === c.platform }}
+                  onToggle={handleToggle}
+                  onEdit={conn => { setEditingConnector(conn); setShowForm(true); }}
+                  onDelete={handleDelete}
+                />
+              </motion.div>
             ))}
-          </div>
-        )}
-      </div>
+          </AnimatePresence>
+        </div>
+      )}
     </div>
+  );
+}
+
+function ConnectorCard({ connector, onToggle, onEdit, onDelete }) {
+  const platform = PLATFORMS.find(p => p.id === connector.platform);
+  return (
+    <Card className={cn('transition-all hover:-translate-y-0.5 hover:shadow-glow group', connector.enabled && 'border-[color:var(--accent)]/40')}>
+      <div className="flex items-center gap-3">
+        <span className="text-2xl">{platform?.icon || '🔌'}</span>
+        <div className="flex-1 min-w-0">
+          <div className="font-medium">{platform?.label || connector.platform}</div>
+          <div className="flex items-center gap-1.5 mt-0.5">
+            {connector.running ? (
+              <Badge tone="success"><Radio size={10} className="animate-pulse" /> 运行中</Badge>
+            ) : connector.enabled ? (
+              <Badge tone="accent">已启用</Badge>
+            ) : (
+              <Badge tone="default">已停用</Badge>
+            )}
+          </div>
+        </div>
+        <div className="flex items-center gap-1.5 shrink-0 opacity-0 group-hover:opacity-100 transition">
+          <Button size="sm" variant="ghost" onClick={() => onEdit(connector)}><Pencil size={14} /></Button>
+          <Button size="sm" variant={connector.enabled ? 'outline' : 'default'} onClick={() => onToggle(connector)} disabled={connector._toggling}>
+            {connector._toggling ? <Loader2 size={12} className="animate-spin" /> : connector.enabled ? <><PowerOff size={12} /> 停用</> : <><Power size={12} /> 启用</>}
+          </Button>
+          <Button size="sm" variant="ghost" onClick={() => onDelete(connector)}><Trash2 size={14} /></Button>
+        </div>
+      </div>
+      {connector.enabled && (
+        <div className="flex gap-4 mt-3 pt-3 border-t border-[color:var(--line)] text-xs text-[color:var(--text-faint)]">
+          <span>会话模式：{SESSION_MODES.find(m => m.value === (connector.parsedConfig?.session_mode || 'per_group'))?.label || '按群共享'}</span>
+          <span>TTL：{connector.parsedConfig?.session_ttl_hours || 24}h</span>
+        </div>
+      )}
+    </Card>
   );
 }
