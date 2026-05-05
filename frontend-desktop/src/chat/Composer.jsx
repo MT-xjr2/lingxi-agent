@@ -1,9 +1,10 @@
 import { useEffect, useRef, useState, useCallback, useMemo } from 'react';
-import { Send, ImagePlus, BookOpen, Square, Cpu, Coins, Slash, Languages, FileText, Lightbulb, Code2, SearchCheck, RefreshCw, Wrench, Mail, Sparkles, GitCompare, Database, TestTube } from 'lucide-react';
+import { Send, ImagePlus, BookOpen, Square, Cpu, Coins, Slash, Languages, FileText, Lightbulb, Code2, SearchCheck, RefreshCw, Wrench, Mail, Sparkles, GitCompare, Database, TestTube, Mic, MicOff, Loader2, Paperclip, X, Camera } from 'lucide-react';
 import { useStore } from '../state/useStore';
 import { Button, Tooltip } from '../ui/primitives';
 import { cn } from '../ui/cn';
 import { formatNum } from './blockUtils';
+import { api } from '../api/client';
 
 const SLASH_COMMANDS = [
   { cmd: '/translate', label: '翻译', desc: '翻译以下内容', prompt: '请将以下内容翻译为{目标语言}：\n\n', icon: Languages },
@@ -20,23 +21,135 @@ const SLASH_COMMANDS = [
   { cmd: '/test', label: '写测试', desc: '生成单元测试', prompt: '请为以下代码编写单元测试：\n\n```\n\n```', icon: TestTube },
 ];
 
+const TEXT_EXTENSIONS = new Set([
+  'md', 'txt', 'json', 'csv', 'tsv', 'xml', 'yaml', 'yml', 'toml', 'ini', 'cfg', 'conf', 'log',
+  'py', 'js', 'jsx', 'ts', 'tsx', 'go', 'rs', 'java', 'kt', 'c', 'cpp', 'h', 'hpp', 'cs',
+  'rb', 'php', 'swift', 'sh', 'bash', 'zsh', 'ps1', 'bat', 'cmd',
+  'sql', 'r', 'lua', 'pl', 'pm', 'dart', 'scala', 'clj', 'ex', 'exs', 'erl', 'hs',
+  'html', 'css', 'scss', 'less', 'vue', 'svelte',
+  'dockerfile', 'makefile', 'gitignore', 'env',
+]);
+
+function getFileExt(name) {
+  const parts = name.split('.');
+  return parts.length > 1 ? parts.pop().toLowerCase() : '';
+}
+
 export function Composer({ useKB: controlledUseKB, setUseKB: setControlledUseKB } = {}) {
   const sendMessage = useStore((s) => s.sendMessage);
   const abort = useStore((s) => s.abort);
   const isStreaming = useStore((s) => s.isStreaming);
   const messages = useStore((s) => s.messages);
+  const pushNotification = useStore((s) => s.pushNotification);
 
   const [text, setText] = useState('');
   const [localUseKB, setLocalUseKB] = useState(false);
   const [images, setImages] = useState([]); // [{ mediaType, data, preview }]
+  const [files, setFiles] = useState([]); // [{ name, ext, content, size }]
   const [slashOpen, setSlashOpen] = useState(false);
   const [slashIdx, setSlashIdx] = useState(0);
+  const [recording, setRecording] = useState(false);
+  const [transcribing, setTranscribing] = useState(false);
+  const [recordDuration, setRecordDuration] = useState(0);
+  const [dragOver, setDragOver] = useState(false);
   const taRef = useRef(null);
   const slashRef = useRef(null);
   const composingRef = useRef(false);
   const composingEndTsRef = useRef(0);
+  const mediaRecorderRef = useRef(null);
+  const audioChunksRef = useRef([]);
+  const recordTimerRef = useRef(null);
   const useKB = controlledUseKB ?? localUseKB;
   const setUseKB = setControlledUseKB ?? setLocalUseKB;
+
+  // 监听全局截屏快捷键推送
+  useEffect(() => {
+    if (!window.electronAPI?.onScreenshotCaptured) return;
+    const unsub = window.electronAPI.onScreenshotCaptured((img) => {
+      const preview = `data:${img.mediaType};base64,${img.data}`;
+      setImages((prev) => [...prev, { mediaType: img.mediaType, data: img.data, preview }].slice(0, 6));
+      pushNotification({ title: '截屏完成', body: '已添加到输入框' });
+    });
+    return unsub;
+  }, [pushNotification]);
+
+  // ─── 录音控制（MediaRecorder + 后端 Whisper API）──────────────────
+
+  const startRecording = useCallback(async () => {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const recorder = new MediaRecorder(stream, {
+        mimeType: MediaRecorder.isTypeSupported('audio/webm;codecs=opus') ? 'audio/webm;codecs=opus' : 'audio/webm',
+      });
+      audioChunksRef.current = [];
+      recorder.ondataavailable = (e) => {
+        if (e.data.size > 0) audioChunksRef.current.push(e.data);
+      };
+      recorder.onstop = async () => {
+        stream.getTracks().forEach((t) => t.stop());
+        clearInterval(recordTimerRef.current);
+        const blob = new Blob(audioChunksRef.current, { type: recorder.mimeType || 'audio/webm' });
+        if (blob.size < 1000) { setRecording(false); return; }
+        setTranscribing(true);
+        try {
+          const result = await api.transcribeAudio(blob);
+          if (result) {
+            setText((prev) => prev + (prev && !prev.endsWith('\n') ? ' ' : '') + result);
+            requestAnimationFrame(() => {
+              const el = taRef.current;
+              if (el) { el.focus(); el.style.height = 'auto'; el.style.height = Math.min(el.scrollHeight, 220) + 'px'; }
+            });
+          }
+        } catch (err) {
+          pushNotification({ title: '语音识别失败', body: err.message || '请重试' });
+        } finally {
+          setTranscribing(false);
+          setRecording(false);
+        }
+      };
+      mediaRecorderRef.current = recorder;
+      recorder.start(250);
+      setRecording(true);
+      setRecordDuration(0);
+      recordTimerRef.current = setInterval(() => setRecordDuration((d) => d + 1), 1000);
+    } catch (err) {
+      pushNotification({ title: '无法录音', body: err.message || '请检查麦克风权限' });
+    }
+  }, [pushNotification]);
+
+  const stopRecording = useCallback(() => {
+    if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
+      mediaRecorderRef.current.stop();
+    }
+    clearInterval(recordTimerRef.current);
+  }, []);
+
+  // ─── 文件拖拽处理 ───────────────────────────────────────────────
+  const onDragOver = useCallback((e) => { e.preventDefault(); setDragOver(true); }, []);
+  const onDragLeave = useCallback(() => setDragOver(false), []);
+  const onDrop = useCallback(async (e) => {
+    e.preventDefault();
+    setDragOver(false);
+    const droppedFiles = Array.from(e.dataTransfer?.files || []);
+    if (!droppedFiles.length) return;
+    const newImages = [];
+    const newFiles = [];
+    for (const f of droppedFiles) {
+      if (f.type.startsWith('image/')) {
+        const buf = await f.arrayBuffer();
+        const b64 = arrayBufferToBase64(buf);
+        newImages.push({ mediaType: f.type || 'image/png', data: b64, preview: URL.createObjectURL(f) });
+      } else {
+        const ext = getFileExt(f.name);
+        if (TEXT_EXTENSIONS.has(ext) || f.type.startsWith('text/')) {
+          const content = await f.text();
+          newFiles.push({ name: f.name, ext, content, size: f.size });
+        }
+      }
+    }
+    if (newImages.length) setImages((prev) => [...prev, ...newImages].slice(0, 6));
+    if (newFiles.length) setFiles((prev) => [...prev, ...newFiles].slice(0, 5));
+  }, []);
 
   const slashQuery = useMemo(() => {
     if (!text.startsWith('/')) return null;
@@ -87,13 +200,21 @@ export function Composer({ useKB: controlledUseKB, setUseKB: setControlledUseKB 
   }, { in: 0, out: 0, cost: 0 });
 
   const onSubmit = async () => {
-    const trimmed = text.trim();
-    if (!trimmed && images.length === 0) return;
+    let finalText = text.trim();
+    // 将附件文件内容拼接到消息中
+    if (files.length > 0) {
+      const fileParts = files.map((f) =>
+        `\n\n--- 附件: ${f.name} ---\n\`\`\`${f.ext}\n${f.content}\n\`\`\``
+      ).join('');
+      finalText = (finalText || '请分析以下文件内容：') + fileParts;
+    }
+    if (!finalText && images.length === 0) return;
     if (isStreaming) return;
     const imgs = images.map(({ mediaType, data }) => ({ mediaType, data }));
     setText('');
     setImages([]);
-    await sendMessage({ message: trimmed, images: imgs, useKB });
+    setFiles([]);
+    await sendMessage({ message: finalText, images: imgs, useKB });
   };
 
   const onKeyDown = (e) => {
@@ -154,18 +275,31 @@ export function Composer({ useKB: controlledUseKB, setUseKB: setControlledUseKB 
 
   const onPaste = (e) => {
     const items = e.clipboardData?.items || [];
-    const files = [];
+    const pastedFiles = [];
     for (const it of items) {
       if (it.kind === 'file' && it.type.startsWith('image/')) {
         const f = it.getAsFile();
-        if (f) files.push(f);
+        if (f) pastedFiles.push(f);
       }
     }
-    if (files.length) {
+    if (pastedFiles.length) {
       e.preventDefault();
-      onPickFiles(files);
+      onPickFiles(pastedFiles);
     }
   };
+
+  const handleScreenshot = useCallback(async () => {
+    if (!window.electronAPI?.captureScreen) return;
+    try {
+      const img = await window.electronAPI.captureScreen();
+      const preview = `data:${img.mediaType};base64,${img.data}`;
+      setImages((prev) => [...prev, { mediaType: img.mediaType, data: img.data, preview }].slice(0, 6));
+    } catch (err) {
+      pushNotification({ title: '截屏失败', body: err.message || '请重试' });
+    }
+  }, [pushNotification]);
+
+  const hasContent = text.trim() || images.length > 0 || files.length > 0;
 
   return (
     <div className="px-6 pb-6">
@@ -179,7 +313,20 @@ export function Composer({ useKB: controlledUseKB, setUseKB: setControlledUseKB 
           </div>
         )}
 
-        <div className="composer p-3 relative">
+        <div
+          className={cn('composer p-3 relative transition-all', dragOver && 'ring-2 ring-[color:var(--accent)] bg-[color:var(--accent-soft)]/30')}
+          onDragOver={onDragOver}
+          onDragLeave={onDragLeave}
+          onDrop={onDrop}
+        >
+          {dragOver && (
+            <div className="absolute inset-0 z-40 flex items-center justify-center rounded-2xl pointer-events-none">
+              <div className="text-sm font-medium text-[color:var(--accent)] flex items-center gap-2">
+                <Paperclip size={18} /> 拖放文件到此处
+              </div>
+            </div>
+          )}
+
           {slashOpen && filteredCommands.length > 0 && (
             <div
               ref={slashRef}
@@ -231,6 +378,42 @@ export function Composer({ useKB: controlledUseKB, setUseKB: setControlledUseKB 
               ))}
             </div>
           )}
+
+          {files.length > 0 && (
+            <div className="flex gap-2 flex-wrap mb-2">
+              {files.map((f, i) => (
+                <div key={i} className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-[color:var(--bg-soft)] border border-[color:var(--line)] text-xs">
+                  <FileText size={12} className="text-[color:var(--accent)] shrink-0" />
+                  <span className="truncate max-w-[120px] text-[color:var(--text-soft)]">{f.name}</span>
+                  <span className="text-[color:var(--text-faint)]">({(f.size / 1024).toFixed(1)}KB)</span>
+                  <button onClick={() => setFiles(files.filter((_, j) => j !== i))} className="ml-0.5 text-[color:var(--text-faint)] hover:text-red-500 transition">
+                    <X size={12} />
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* 录音状态指示条 */}
+          {(recording || transcribing) && (
+            <div className="flex items-center gap-2 mb-2 px-2 py-1.5 rounded-lg bg-red-500/10 border border-red-500/20">
+              {recording ? (
+                <>
+                  <span className="voice-pulse w-2.5 h-2.5 rounded-full bg-red-500" />
+                  <span className="text-xs text-red-600 dark:text-red-400 font-medium">录音中 {recordDuration}s</span>
+                  <button onClick={stopRecording} className="ml-auto text-xs text-red-500 hover:text-red-700 font-medium transition">
+                    点击停止
+                  </button>
+                </>
+              ) : (
+                <>
+                  <Loader2 size={14} className="animate-spin text-[color:var(--accent)]" />
+                  <span className="text-xs text-[color:var(--accent)] font-medium">语音识别中...</span>
+                </>
+              )}
+            </div>
+          )}
+
           <textarea
             ref={taRef}
             value={text}
@@ -239,7 +422,7 @@ export function Composer({ useKB: controlledUseKB, setUseKB: setControlledUseKB 
             onCompositionStart={onCompositionStart}
             onCompositionEnd={onCompositionEnd}
             onPaste={onPaste}
-            placeholder="输入消息，/ 唤起快捷命令，Shift+Enter 换行"
+            placeholder="输入消息，/ 唤起快捷命令，拖入文件，Shift+Enter 换行"
             rows={1}
             className="text-[15px] leading-6"
           />
@@ -256,6 +439,59 @@ export function Composer({ useKB: controlledUseKB, setUseKB: setControlledUseKB 
                   </span>
                 </label>
               </Tooltip>
+              <Tooltip label="添加文件">
+                <label className="cursor-pointer">
+                  <input
+                    type="file" multiple className="hidden"
+                    onChange={(e) => {
+                      const picked = Array.from(e.target.files || []);
+                      const imgFiles = picked.filter(f => f.type.startsWith('image/'));
+                      const txtFiles = picked.filter(f => !f.type.startsWith('image/'));
+                      if (imgFiles.length) onPickFiles(imgFiles);
+                      if (txtFiles.length) {
+                        Promise.all(txtFiles.map(async f => {
+                          const ext = getFileExt(f.name);
+                          const content = await f.text();
+                          return { name: f.name, ext, content, size: f.size };
+                        })).then(newFiles => setFiles(prev => [...prev, ...newFiles].slice(0, 5)));
+                      }
+                      e.target.value = '';
+                    }}
+                  />
+                  <span className="inline-flex items-center justify-center w-9 h-9 rounded-lg hover:bg-[color:var(--bg-soft)] text-[color:var(--text-soft)]">
+                    <Paperclip size={18} />
+                  </span>
+                </label>
+              </Tooltip>
+              <Tooltip label={recording ? '点击停止' : transcribing ? '识别中...' : '语音输入'}>
+                <button
+                  onClick={(e) => {
+                    e.preventDefault();
+                    if (transcribing) return;
+                    if (recording) { stopRecording(); } else { startRecording(); }
+                  }}
+                  disabled={transcribing}
+                  className={cn(
+                    'inline-flex items-center justify-center w-9 h-9 rounded-lg transition',
+                    recording ? 'bg-red-500/20 text-red-500 voice-pulse-bg' :
+                    transcribing ? 'bg-[color:var(--accent-soft)] text-[color:var(--accent)]' :
+                    'hover:bg-[color:var(--bg-soft)] text-[color:var(--text-soft)]'
+                  )}
+                >
+                  {transcribing ? <Loader2 size={18} className="animate-spin" /> :
+                   recording ? <MicOff size={18} /> : <Mic size={18} />}
+                </button>
+              </Tooltip>
+              {window.electronAPI?.captureScreen && (
+                <Tooltip label="截屏 (⌘⇧S)">
+                  <button
+                    onClick={handleScreenshot}
+                    className="inline-flex items-center justify-center w-9 h-9 rounded-lg hover:bg-[color:var(--bg-soft)] text-[color:var(--text-soft)] transition"
+                  >
+                    <Camera size={18} />
+                  </button>
+                </Tooltip>
+              )}
               <Tooltip label={useKB ? '已启用知识库检索' : '启用知识库检索'}>
                 <button
                   onClick={() => setUseKB((v) => !v)}
@@ -274,7 +510,7 @@ export function Composer({ useKB: controlledUseKB, setUseKB: setControlledUseKB 
                 <Square size={14} /> 停止
               </Button>
             ) : (
-              <Button onClick={onSubmit} disabled={!text.trim() && images.length === 0}>
+              <Button onClick={onSubmit} disabled={!hasContent}>
                 <Send size={14} /> 发送
               </Button>
             )}
@@ -284,3 +520,4 @@ export function Composer({ useKB: controlledUseKB, setUseKB: setControlledUseKB 
     </div>
   );
 }
+

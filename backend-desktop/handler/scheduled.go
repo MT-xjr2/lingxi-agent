@@ -170,7 +170,7 @@ func ToggleScheduledTask(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"ok": true})
 }
 
-// TriggerScheduledTask POST /api/scheduled-tasks/:id/run
+// TriggerScheduledTask POST /api/scheduled-tasks/:id/run — 立即在后台执行
 func TriggerScheduledTask(c *gin.Context) {
 	id, err := strconv.ParseInt(c.Param("id"), 10, 64)
 	if err != nil {
@@ -182,11 +182,10 @@ func TriggerScheduledTask(c *gin.Context) {
 		c.Status(http.StatusNotFound)
 		return
 	}
-	// 手动触发：设置 next_run_at 为现在，让 scheduler 下次 tick 执行
-	now := time.Now()
-	t.NextRunAt = &now
-	db.UpdateScheduledTask(t)
-	c.JSON(http.StatusOK, gin.H{"ok": true, "message": "已触发，将在下次调度检查时执行"})
+
+	go scheduler.RunTaskNow(*t)
+
+	c.JSON(http.StatusOK, gin.H{"ok": true, "message": "已触发，正在后台执行"})
 }
 
 // ListScheduledTaskRuns GET /api/scheduled-tasks/:id/runs

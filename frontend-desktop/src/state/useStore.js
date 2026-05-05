@@ -1,6 +1,39 @@
 import { create } from 'zustand';
 import { api, wsClient } from '../api/client';
 
+// 快捷回复建议生成（基于助手回复内容关键词匹配）
+function generateQuickReplies(text) {
+  if (!text || text.length < 10) return [];
+  const replies = [];
+
+  if (/代码|函数|代码块|实现|编程|程序/.test(text)) {
+    replies.push('请解释这段代码的工作原理');
+    replies.push('能否优化一下这段代码？');
+    replies.push('请为这段代码添加注释');
+  } else if (/翻译|translation/i.test(text)) {
+    replies.push('翻译得很好，再翻译一段');
+    replies.push('改为更口语化的表达');
+    replies.push('帮我校对一下语法');
+  } else if (/步骤|方案|计划|方法|建议/.test(text)) {
+    replies.push('请详细展开第一步');
+    replies.push('有没有其他替代方案？');
+    replies.push('请总结一下要点');
+  } else if (/表格|数据|分析|统计/.test(text)) {
+    replies.push('请用图表展示');
+    replies.push('帮我进一步分析');
+    replies.push('导出为 CSV 格式');
+  } else if (/总结|摘要|要点/.test(text)) {
+    replies.push('请更详细地展开');
+    replies.push('能否用列表形式重新整理？');
+  } else {
+    replies.push('继续');
+    replies.push('请详细说明');
+    replies.push('帮我总结一下');
+  }
+
+  return replies.slice(0, 3);
+}
+
 // 全局状态：会话、当前激活档案、用量、消息流
 export const useStore = create((set, get) => ({
   // ─── 主题 ────────────────────────────────────────────────────
@@ -54,6 +87,15 @@ export const useStore = create((set, get) => ({
       await get().setActiveSession(next);
     }
   },
+  batchDeleteSessions: async (ids) => {
+    if (!ids || ids.length === 0) return;
+    await api.batchDeleteSessions(ids);
+    const list = await get().refreshSessions();
+    if (ids.includes(get().activeSessionId)) {
+      const next = list[0]?.id || null;
+      await get().setActiveSession(next);
+    }
+  },
   renameSession: async (id, title) => {
     await api.renameSession(id, title);
     await get().refreshSessions();
@@ -69,6 +111,7 @@ export const useStore = create((set, get) => ({
   agentState: 'IDLE', // IDLE | THINKING | CHECKING | EXECUTING | DONE
   isStreaming: false,
   startedAt: null,
+  suggestedReplies: [], // 快捷回复建议
 
   // ─── 档案 ────────────────────────────────────────────────────
   providers: [],
@@ -138,8 +181,120 @@ export const useStore = create((set, get) => ({
   handleWSEvent: (msg) => {
     const { event, data, sessionId } = msg;
     const state = get();
+
+    // 处理远端 Agent 流式 token 转发（广播事件，无 sessionId）
+    if (event === 'a2a_remote_stream') {
+      try {
+        const d = typeof data === 'string' ? JSON.parse(data) : data;
+        const convId = d?.conversation_id;
+        const streamEvent = d?.event;
+        const streamData = d?.data || '';
+
+        if (!convId) return;
+
+        switch (streamEvent) {
+          case 'stream_start':
+            set({ a2aRemoteIsStreaming: true, a2aRemoteLiveBlocks: [], activeA2AConvId: convId });
+            break;
+          case 'stream_done':
+            set({ a2aRemoteIsStreaming: false, a2aRemoteLiveBlocks: [] });
+            break;
+          case 'text': {
+            const blocks = [...state.a2aRemoteLiveBlocks];
+            const last = blocks[blocks.length - 1];
+            if (last && last.type === 'text') last.text += streamData;
+            else blocks.push({ type: 'text', text: streamData });
+            set({ a2aRemoteLiveBlocks: blocks, a2aRemoteIsStreaming: true });
+            break;
+          }
+          case 'thinking': {
+            const blocks = [...state.a2aRemoteLiveBlocks];
+            const last = blocks[blocks.length - 1];
+            if (last && last.type === 'thinking') last.text += streamData;
+            else blocks.push({ type: 'thinking', text: streamData });
+            set({ a2aRemoteLiveBlocks: blocks, a2aRemoteIsStreaming: true });
+            break;
+          }
+        }
+      } catch {}
+      return;
+    }
+
+    // 路由 A2A 会话的流式事件
+    if (sessionId && sessionId === state.activeA2ASessionId && sessionId !== state.activeSessionId) {
+      const streamEvents = ['agent_state', 'thinking', 'text', 'tool_start', 'tool_end', 'message_usage', 'done'];
+      if (streamEvents.includes(event)) {
+        let payload;
+        try { payload = data ? JSON.parse(data) : null; } catch { payload = data; }
+        switch (event) {
+          case 'agent_state': {
+            const s = (payload && payload.state) || 'IDLE';
+            if (s === 'THINKING' && !state.a2aIsStreaming) {
+              set({ a2aIsStreaming: true, a2aLiveBlocks: [] });
+            }
+            break;
+          }
+          case 'thinking': {
+            const text = typeof payload === 'string' ? payload : (data || '');
+            const blocks = [...state.a2aLiveBlocks];
+            const last = blocks[blocks.length - 1];
+            if (last && last.type === 'thinking') last.text += text;
+            else blocks.push({ type: 'thinking', text });
+            set({ a2aLiveBlocks: blocks });
+            break;
+          }
+          case 'text': {
+            const text = typeof payload === 'string' ? payload : (data || '');
+            const blocks = [...state.a2aLiveBlocks];
+            const last = blocks[blocks.length - 1];
+            if (last && last.type === 'text') last.text += text;
+            else blocks.push({ type: 'text', text });
+            set({ a2aLiveBlocks: blocks });
+            break;
+          }
+          case 'tool_start': {
+            const blocks = [...state.a2aLiveBlocks];
+            blocks.push({ type: 'tool', name: payload?.name || '', label: payload?.label || '执行技能', startedAt: Date.now(), done: false });
+            set({ a2aLiveBlocks: blocks });
+            break;
+          }
+          case 'tool_end': {
+            if (payload?.hidden) break;
+            const blocks = [...state.a2aLiveBlocks];
+            for (let i = blocks.length - 1; i >= 0; i--) {
+              if (blocks[i].type === 'tool' && !blocks[i].done) {
+                blocks[i].done = true;
+                blocks[i].endedAt = Date.now();
+                if (payload && typeof payload === 'object') {
+                  if (payload.input != null) blocks[i].input = payload.input;
+                  if (payload.label) blocks[i].label = payload.label;
+                  if (payload.ms != null) blocks[i].ms = payload.ms;
+                  if (payload.status) blocks[i].status = payload.status;
+                }
+                break;
+              }
+            }
+            set({ a2aLiveBlocks: blocks });
+            break;
+          }
+          case 'message_usage':
+          case 'done': {
+            if (state.a2aIsStreaming) {
+              set({ a2aLiveBlocks: [], a2aIsStreaming: false });
+              // 重新拉取消息列表以获取最新的 assistant 消息
+              const sid = state.activeA2ASessionId;
+              if (sid) {
+                api.listMessages(sid).then((m) => set({ a2aMessages: m })).catch(() => {});
+              }
+            }
+            break;
+          }
+        }
+        return;
+      }
+    }
+
     if (sessionId && sessionId !== state.activeSessionId) {
-      // 仅处理当前会话事件（其它会话忽略；后台运行 indicator 由 sessions 列表展示）
       if (event === 'profile_changed') {
         state.refreshProfiles();
       }
@@ -230,6 +385,11 @@ export const useStore = create((set, get) => ({
         state.refreshTodayUsage();
         break;
       }
+      case 'suggested_replies': {
+        const replies = Array.isArray(payload) ? payload : [];
+        set({ suggestedReplies: replies.slice(0, 3) });
+        break;
+      }
       case 'done': {
         // 兜底：如果没有 message_usage（旧消息无 usage），仍要清流
         if (state.isStreaming) {
@@ -246,6 +406,11 @@ export const useStore = create((set, get) => ({
             set({ messages: [...state.messages, newMsg] });
           }
           set({ liveBlocks: [], isStreaming: false, agentState: 'DONE' });
+
+          // 生成快捷回复建议
+          const lastText = finalBlocks.filter(b => b.type === 'text').map(b => b.text).join('').slice(0, 500);
+          const suggestions = generateQuickReplies(lastText);
+          if (suggestions.length > 0) set({ suggestedReplies: suggestions });
         }
         // 重新拉取最新消息（保证持久化的版本与流式一致）
         if (state.activeSessionId) {
@@ -275,7 +440,9 @@ export const useStore = create((set, get) => ({
         const title = info.title || '灵犀 — 定时任务';
         const body = info.body || '任务已完成';
         state.pushNotification({ title, body });
-        if (typeof Notification !== 'undefined' && Notification.permission === 'granted') {
+        if (window.electronAPI?.showNotification) {
+          window.electronAPI.showNotification(title, body);
+        } else if (typeof Notification !== 'undefined' && Notification.permission === 'granted') {
           new Notification(title, { body });
         } else if (typeof Notification !== 'undefined' && Notification.permission !== 'denied') {
           Notification.requestPermission().then(perm => {
@@ -313,6 +480,7 @@ export const useStore = create((set, get) => ({
       isStreaming: true,
       startedAt: Date.now(),
       agentState: 'THINKING',
+      suggestedReplies: [],
     });
     try {
       await api.sendChat({
@@ -410,6 +578,62 @@ export const useStore = create((set, get) => ({
       set({ isStreaming: false, agentState: 'IDLE' });
       get().pushNotification({ title: '重新生成失败', body: e.message });
     }
+  },
+
+  // ── Project Nexus: A2A 状态 ─────────────────────────────────────
+  nexusPeers: [],
+  nexusContacts: [],
+  a2aConversations: [],
+  pendingConnectRequests: [],
+
+  // A2A 会话流式状态（独立于主聊天）
+  activeA2ASessionId: null,
+  activeA2AConvId: null,
+  a2aLiveBlocks: [],
+  a2aIsStreaming: false,
+  a2aRemoteLiveBlocks: [],
+  a2aRemoteIsStreaming: false,
+  a2aMessages: [],
+
+  setActiveA2ASession: async (sessionId) => {
+    set({
+      activeA2ASessionId: sessionId,
+      a2aLiveBlocks: [], a2aIsStreaming: false,
+      a2aRemoteLiveBlocks: [], a2aRemoteIsStreaming: false,
+      a2aMessages: [],
+    });
+    if (sessionId) {
+      wsClient.subscribe(sessionId);
+      const msgs = await api.listMessages(sessionId).catch(() => []);
+      set({ a2aMessages: msgs });
+    }
+  },
+
+  refreshA2AMessages: async () => {
+    const sid = get().activeA2ASessionId;
+    if (sid) {
+      const msgs = await api.listMessages(sid).catch(() => []);
+      set({ a2aMessages: msgs });
+    }
+  },
+
+  refreshNexusPeers: async () => {
+    try {
+      const data = await api.listPeers();
+      set({ nexusPeers: data || [] });
+    } catch {}
+  },
+  refreshNexusContacts: async () => {
+    try {
+      const data = await api.listContacts();
+      set({ nexusContacts: data || [] });
+    } catch {}
+  },
+  refreshA2AConversations: async () => {
+    try {
+      const data = await api.listA2AConversations();
+      set({ a2aConversations: data || [] });
+    } catch {}
   },
 }));
 

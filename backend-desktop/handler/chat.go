@@ -17,6 +17,7 @@ import (
 
 	"lingxi-agent/config"
 	"lingxi-agent/db"
+	"lingxi-agent/nexus"
 	"lingxi-agent/router"
 	"lingxi-agent/usage"
 
@@ -1743,4 +1744,342 @@ func truncateTitle(s string) string {
 		return string(runes[:20]) + "…"
 	}
 	return s
+}
+
+// ─── A2A 流式对话 ──────────────────────────────────────────────
+
+// CreateA2ASession 为 A2A 对话创建一个专用会话（is_a2a=1，不在主会话列表中显示）
+func CreateA2ASession(title string, agentID int64) (int64, error) {
+	res, err := db.DB.Exec(`INSERT INTO sessions (title, agent_id, is_a2a) VALUES (?, ?, 1)`, title, agentID)
+	if err != nil {
+		return 0, err
+	}
+	return res.LastInsertId()
+}
+
+// RunA2AStreamingTurn 在指定会话上执行一轮 A2A 流式对话。
+// 将 message 作为 user 消息写入会话，然后启动 Claude 流式执行。
+// 流式事件通过 WS hub 推送到订阅该 sessionID 的前端。
+// forwarder 可为 nil，非 nil 时将 text/thinking token 转发到远端。
+// 返回 agent 的完整文本回复。
+func RunA2AStreamingTurn(sessionID int64, message string, agentID int64, forwarder nexus.StreamForwarder) (string, error) {
+	hub := globalHub
+	cfg := config.Get()
+
+	appendMessage(sessionID, "user", message)
+
+	claudeSessionID := getClaudeSessionID(sessionID)
+
+	args := []string{
+		"-p",
+		"--output-format", "stream-json",
+		"--verbose",
+		"--include-partial-messages",
+		"--dangerously-skip-permissions",
+	}
+
+	prompt := buildA2ASystemPrompt()
+	if agentID > 0 {
+		if a, err := db.GetAgent(agentID); err == nil && !a.Builtin && strings.TrimSpace(a.SystemPrompt) != "" {
+			prompt = applyAgentPersona(prompt, a.Name, a.SystemPrompt)
+		}
+	}
+
+	if claudeSessionID != "" {
+		args = append(args, "--resume", claudeSessionID)
+	}
+	args = append(args, "--system-prompt", prompt)
+
+	claudeBin := cfg.Claude.Bin
+	cmd := exec.Command(claudeBin, args...)
+	cmd.Stdin = strings.NewReader(message)
+	cmd.Env = buildClaudeEnv(cfg)
+
+	stdout, err := cmd.StdoutPipe()
+	if err != nil {
+		return "", fmt.Errorf("stdout pipe: %w", err)
+	}
+	stderrPipe, _ := cmd.StderrPipe()
+
+	if err := cmd.Start(); err != nil {
+		return "", fmt.Errorf("cmd start: %w", err)
+	}
+	log.Printf("[a2a] claude pid=%d session=%d", cmd.Process.Pid, sessionID)
+
+	activeChats.Store(sessionID, cmd)
+	defer activeChats.Delete(sessionID)
+
+	go func() {
+		s := bufio.NewScanner(stderrPipe)
+		for s.Scan() {
+			log.Printf("[a2a claude stderr] %s", s.Text())
+		}
+	}()
+
+	hub.Send(sessionID, "agent_state", `{"state":"THINKING"}`)
+	if forwarder != nil {
+		forwarder("stream_start", "")
+	}
+
+	startedAt := time.Now()
+	var (
+		textBuf            strings.Builder
+		blocks             []msgBlock
+		newClaudeSessionID string
+		aggUsage           claudeUsage
+		aggCostUSD         float64
+		modelUsed          string
+	)
+
+	appendBlock := func(typ, name, chunk string) {
+		if len(blocks) > 0 && typ != "tool" {
+			last := &blocks[len(blocks)-1]
+			if last.Type == typ {
+				last.Text += chunk
+				return
+			}
+		}
+		blocks = append(blocks, msgBlock{Type: typ, Name: name, Text: chunk})
+	}
+
+	scanner := bufio.NewScanner(stdout)
+	scanner.Buffer(make([]byte, 1024*1024), 1024*1024)
+
+	for scanner.Scan() {
+		line := strings.TrimSpace(scanner.Text())
+		if line == "" {
+			continue
+		}
+		var ev claudeEvent
+		if json.Unmarshal([]byte(line), &ev) != nil {
+			continue
+		}
+
+		switch ev.Type {
+		case "system":
+			if ev.Subtype == "init" && ev.Session != "" {
+				newClaudeSessionID = ev.Session
+			}
+		case "result":
+			if ev.CostUSD > 0 {
+				aggCostUSD = ev.CostUSD
+			}
+			if ev.Usage != nil {
+				aggUsage = *ev.Usage
+			}
+		case "stream_event":
+			var inner innerEvent
+			if json.Unmarshal(ev.Event, &inner) != nil {
+				continue
+			}
+			switch inner.Type {
+			case "message_start":
+				if len(inner.Message) > 0 {
+					var m struct {
+						Model string       `json:"model"`
+						Usage *claudeUsage `json:"usage"`
+					}
+					if json.Unmarshal(inner.Message, &m) == nil {
+						if m.Model != "" {
+							modelUsed = m.Model
+						}
+						if m.Usage != nil {
+							aggUsage.InputTokens += m.Usage.InputTokens
+							aggUsage.CacheReadInputTokens += m.Usage.CacheReadInputTokens
+							aggUsage.CacheCreationInputTokens += m.Usage.CacheCreationInputTokens
+						}
+					}
+				}
+			case "message_delta":
+				if inner.Usage != nil {
+					if inner.Usage.OutputTokens > aggUsage.OutputTokens {
+						aggUsage.OutputTokens = inner.Usage.OutputTokens
+					}
+				}
+			case "content_block_start":
+				if inner.ContentBlock.Type == "tool_use" {
+					toolName := inner.ContentBlock.Name
+					if !isAskUserTool(toolName) {
+						payload, _ := json.Marshal(map[string]any{
+							"id":    inner.ContentBlock.ID,
+							"name":  toolName,
+							"label": toolDisplayLabel(toolName),
+						})
+						hub.Send(sessionID, "tool_start", string(payload))
+					}
+					blocks = append(blocks, msgBlock{
+						Type:  "tool",
+						Name:  toolName,
+						Label: toolDisplayLabel(toolName),
+						Ms:    time.Now().UnixMilli(),
+					})
+				} else if inner.ContentBlock.Type == "thinking" {
+					appendBlock("thinking", "", "")
+				}
+			case "content_block_delta":
+				d := inner.Delta
+				switch d.Type {
+				case "thinking_delta":
+					if d.Thinking != "" {
+						safe := redactSensitive(d.Thinking)
+						hub.Send(sessionID, "thinking", jsonStr(safe))
+						appendBlock("thinking", "", safe)
+						if forwarder != nil {
+							forwarder("thinking", safe)
+						}
+					}
+				case "text_delta":
+					if d.Text != "" {
+						safeText := redactSensitive(d.Text)
+						hub.Send(sessionID, "text", jsonStr(safeText))
+						appendBlock("text", "", safeText)
+						textBuf.WriteString(safeText)
+						if forwarder != nil {
+							forwarder("text", safeText)
+						}
+					}
+				case "input_json_delta":
+					if d.PartialJSON != "" && len(blocks) > 0 {
+						last := &blocks[len(blocks)-1]
+						if last.Type == "tool" {
+							last.Input += d.PartialJSON
+						}
+					}
+				default:
+					if d.ReasoningContent != "" || d.Reasoning != "" {
+						r := d.ReasoningContent
+						if r == "" {
+							r = d.Reasoning
+						}
+						safe := redactSensitive(r)
+						hub.Send(sessionID, "thinking", jsonStr(safe))
+						appendBlock("thinking", "", safe)
+						if forwarder != nil {
+							forwarder("thinking", safe)
+						}
+					}
+				}
+			case "content_block_stop":
+				if len(blocks) > 0 {
+					last := &blocks[len(blocks)-1]
+					if last.Type == "tool" {
+						if isAskUserTool(last.Name) {
+							blocks = blocks[:len(blocks)-1]
+						} else {
+							last.Done = true
+							elapsed := time.Now().UnixMilli() - last.Ms
+							if elapsed < 0 {
+								elapsed = 0
+							}
+							summary := safeSummarizeToolInput(last.Name, last.Input)
+							last.Input = summary
+							last.Ms = elapsed
+							last.Status = "ok"
+							endPayload, _ := json.Marshal(map[string]any{
+								"done":   true,
+								"name":   last.Name,
+								"label":  last.Label,
+								"input":  summary,
+								"ms":     elapsed,
+								"status": "ok",
+							})
+							hub.Send(sessionID, "tool_end", string(endPayload))
+						}
+					}
+				}
+			}
+		}
+	}
+
+	cmd.Wait()
+
+	if newClaudeSessionID != "" {
+		saveClaudeSessionID(sessionID, newClaudeSessionID)
+	}
+
+	durationMs := time.Since(startedAt).Milliseconds()
+	profileID, runtimeModel, _, _ := activeRuntimeSnapshot()
+	if modelUsed == "" {
+		modelUsed = runtimeModel
+	}
+
+	costEstimated := false
+	if aggCostUSD == 0 && (aggUsage.InputTokens+aggUsage.OutputTokens) > 0 {
+		aggCostUSD = usage.EstimateCost(modelUsed, aggUsage.InputTokens, aggUsage.OutputTokens)
+		if aggCostUSD > 0 {
+			costEstimated = true
+		}
+	}
+
+	usagePayload := buildUsagePayload(modelUsed, profileID, durationMs, aggCostUSD, aggUsage)
+	if costEstimated {
+		usagePayload["estimated"] = true
+	}
+
+	var savedMsgID int64
+	if len(blocks) > 0 {
+		for i := range blocks {
+			if blocks[i].Type == "tool" {
+				blocks[i].Done = true
+				blocks[i].Text = ""
+			} else {
+				blocks[i].Text = redactSensitive(blocks[i].Text)
+			}
+		}
+		if bj, err := json.Marshal(blocks); err == nil {
+			usageJSON, _ := json.Marshal(usagePayload)
+			savedMsgID = appendMessageWithUsage(sessionID, "assistant", string(bj), string(usageJSON))
+		}
+	}
+
+	if aggUsage.InputTokens+aggUsage.OutputTokens > 0 || aggCostUSD > 0 {
+		_, _ = db.InsertUsageRecord(&db.UsageRecord{
+			SessionID:        sessionID,
+			MessageID:        savedMsgID,
+			ProfileID:        profileID,
+			Model:            modelUsed,
+			InputTokens:      aggUsage.InputTokens,
+			OutputTokens:     aggUsage.OutputTokens,
+			CacheReadTokens:  aggUsage.CacheReadInputTokens,
+			CacheWriteTokens: aggUsage.CacheCreationInputTokens,
+			CostUSD:          aggCostUSD,
+			Estimated:        costEstimated,
+			DurationMs:       durationMs,
+		})
+		evt, _ := json.Marshal(map[string]interface{}{
+			"messageId": savedMsgID,
+			"sessionId": sessionID,
+			"usage":     usagePayload,
+		})
+		hub.Send(sessionID, "message_usage", string(evt))
+	}
+
+	if forwarder != nil {
+		forwarder("stream_done", "")
+	}
+	hub.Send(sessionID, "done", "[DONE]")
+
+	return textBuf.String(), nil
+}
+
+// buildA2ASystemPrompt A2A 专用系统提示词（精简版，专注于对话协作）
+func buildA2ASystemPrompt() string {
+	return `你正在参与一场 Agent 间的自动对话。你代表你的主人（用户）与对方的 Agent 进行专业沟通。
+
+# 核心规则
+
+1. 你是一个 AI Agent，正在代表你的主人与另一个 Agent 进行对话协作
+2. 对话内容来自对方 Agent 的回复，你需要基于对话目标进行专业回应
+3. 使用中文回复
+4. 保持专业、高效、目标导向的沟通风格
+5. 当你认为对话目标已经达成，在回复开头添加 [CLOSE] 标记，然后给出总结
+6. 当你需要人类介入决策时，在回复开头添加 [HANDOFF] 标记并说明原因
+7. 当你要发起一个提案时，在回复开头添加 [PROPOSAL] 标记
+8. 当你做出决策时，在回复开头添加 [DECISION] 标记
+
+# 消息格式
+- 普通对话直接输出文本
+- 特殊消息在回复最开头使用标记前缀：[PROPOSAL]、[DECISION]、[HANDOFF]、[CLOSE]
+- 示例：[CLOSE] 经过讨论，我们达成了以下共识……
+`
 }

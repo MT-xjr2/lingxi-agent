@@ -170,6 +170,62 @@ else
   fi
 fi
 
+# ── 3.7 准备 whisper.cpp 离线语音识别 ─────────────────────────────
+echo ""
+echo "▶ [3.7] 准备 whisper.cpp 离线语音识别..."
+WHISPER_DIR="$RESOURCES_DIR/whisper"
+mkdir -p "$WHISPER_DIR"
+
+WHISPER_BIN="$WHISPER_DIR/whisper-cli"
+WHISPER_MODEL="$WHISPER_DIR/ggml-base.bin"
+
+if [ ! -f "$WHISPER_BIN" ]; then
+  # 方式 1：从 Homebrew 复制已安装的 whisper-cli
+  BREW_WHISPER="$(which whisper-cli 2>/dev/null || echo '')"
+  if [ -n "$BREW_WHISPER" ] && [ -x "$BREW_WHISPER" ]; then
+    cp "$BREW_WHISPER" "$WHISPER_BIN"
+    chmod +x "$WHISPER_BIN"
+    echo "  ✓ whisper-cli 已从系统复制: $BREW_WHISPER"
+  else
+    # 方式 2：从源码编译
+    echo "  ▸ 从源码编译 whisper.cpp..."
+    WHISPER_SRC="/tmp/whisper-cpp-src"
+    if [ ! -d "$WHISPER_SRC" ]; then
+      git clone --depth=1 https://github.com/ggml-org/whisper.cpp.git "$WHISPER_SRC" 2>/dev/null
+    fi
+    if [ -d "$WHISPER_SRC" ]; then
+      pushd "$WHISPER_SRC" > /dev/null
+      cmake -B build -DCMAKE_BUILD_TYPE=Release -DWHISPER_METAL=ON 2>/dev/null
+      cmake --build build --config Release -j$(sysctl -n hw.ncpu) 2>/dev/null
+      if [ -f "build/bin/whisper-cli" ]; then
+        cp "build/bin/whisper-cli" "$WHISPER_BIN"
+        chmod +x "$WHISPER_BIN"
+        echo "  ✓ whisper-cli 编译完成"
+      else
+        echo "  ⚠️  whisper-cli 编译失败（语音识别将仅支持远端 API）"
+      fi
+      popd > /dev/null
+    else
+      echo "  ⚠️  whisper.cpp 仓库克隆失败，跳过"
+    fi
+  fi
+else
+  echo "  ✓ whisper-cli 已存在"
+fi
+
+if [ ! -f "$WHISPER_MODEL" ]; then
+  echo "  ▸ 下载 ggml-base 模型 (~148MB)..."
+  MODEL_URL="https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-base.bin"
+  if curl -fsSL "$MODEL_URL" -o "$WHISPER_MODEL" 2>/dev/null; then
+    echo "  ✓ ggml-base.bin 已下载: $(du -sh "$WHISPER_MODEL" | cut -f1)"
+  else
+    echo "  ⚠️  模型下载失败（语音识别将仅支持远端 API）"
+    rm -f "$WHISPER_MODEL"
+  fi
+else
+  echo "  ✓ ggml-base.bin 已存在: $(du -sh "$WHISPER_MODEL" | cut -f1)"
+fi
+
 # ── 4. 内嵌 Node.js 二进制（claude CLI 运行时）────────────────────
 echo ""
 echo "▶ [4/5] 准备 Node.js 运行时..."
@@ -250,3 +306,13 @@ echo "  ✓ 构建完成！"
 echo "  输出目录: $ROOT_DIR/dist-electron"
 echo "========================================"
 ls -lh "$ROOT_DIR/dist-electron/" 2>/dev/null || true
+
+echo ""
+echo "── 发布更新提示 ──────────────────────────────"
+echo "  若需发布新版本，请将以下文件上传到 CDN:"
+echo "  1. dist-electron/latest-mac.yml"
+echo "  2. dist-electron/灵犀-*-arm64-mac.zip"
+echo "  3. dist-electron/灵犀-*-arm64-mac.zip.blockmap"
+echo "  上传到: xxx"
+echo "  ※ 记得先修改 electron/package.json 中的 version 字段"
+echo "───────────────────────────────────────────────"

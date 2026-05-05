@@ -30,7 +30,7 @@ func Init(chatRunner ChatRunner, notifyFn NotifyFunc) {
 // Start 启动调度循环（后台 goroutine，每分钟检查一次到期任务）
 func Start() {
 	go func() {
-		ticker := time.NewTicker(60 * time.Second)
+		ticker := time.NewTicker(15 * time.Second)
 		defer ticker.Stop()
 
 		// 启动后立即检查一次
@@ -40,7 +40,7 @@ func Start() {
 			checkAndRun()
 		}
 	}()
-	log.Println("[scheduler] started (interval=60s)")
+	log.Println("[scheduler] started (interval=15s)")
 }
 
 func checkAndRun() {
@@ -52,6 +52,11 @@ func checkAndRun() {
 	for _, t := range tasks {
 		go executeTask(t)
 	}
+}
+
+// RunTaskNow 立即执行一个任务（由手动触发调用）
+func RunTaskNow(t db.ScheduledTask) {
+	executeTask(t)
 }
 
 func executeTask(t db.ScheduledTask) {

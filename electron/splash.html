@@ -1,0 +1,107 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>灵犀 AI Agent</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    html, body {
+      height: 100%;
+      background: #0f0f11;
+      color: #e4e4e7;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', sans-serif;
+      -webkit-app-region: drag;
+      user-select: none;
+      overflow: hidden;
+    }
+    .container {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      height: 100%;
+      gap: 28px;
+    }
+    .logo-ring {
+      position: relative;
+      width: 80px;
+      height: 80px;
+    }
+    .logo-ring::before {
+      content: '';
+      position: absolute;
+      inset: -4px;
+      border-radius: 20px;
+      background: conic-gradient(from 0deg, #6366f1, #a78bfa, #818cf8, #6366f1);
+      animation: spin 2s linear infinite;
+      opacity: 0.6;
+    }
+    .logo-ring::after {
+      content: '';
+      position: absolute;
+      inset: 0;
+      border-radius: 16px;
+      background: #0f0f11;
+    }
+    .logo-ring img {
+      position: relative;
+      z-index: 1;
+      width: 80px;
+      height: 80px;
+      border-radius: 16px;
+    }
+    .brand {
+      font-size: 24px;
+      font-weight: 700;
+      letter-spacing: 2px;
+      background: linear-gradient(135deg, #a78bfa, #818cf8, #6366f1);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+    .loader {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+    }
+    .dots {
+      display: flex;
+      gap: 6px;
+    }
+    .dots span {
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background: #6366f1;
+      animation: pulse 1.2s ease-in-out infinite;
+    }
+    .dots span:nth-child(2) { animation-delay: 0.2s; }
+    .dots span:nth-child(3) { animation-delay: 0.4s; }
+    .hint {
+      font-size: 13px;
+      color: #71717a;
+    }
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+    @keyframes pulse {
+      0%, 100% { opacity: 0.3; transform: scale(0.8); }
+      50% { opacity: 1; transform: scale(1.2); }
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="logo-ring">
+      <img src="assets/icon.png" alt="灵犀" onerror="this.style.display='none'">
+    </div>
+    <div class="brand">灵犀</div>
+    <div class="loader">
+      <div class="dots">
+        <span></span><span></span><span></span>
+      </div>
+      <span class="hint">正在启动引擎…</span>
+    </div>
+  </div>
+</body>
+</html>

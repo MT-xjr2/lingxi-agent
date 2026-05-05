@@ -11,6 +11,9 @@
     "dist:mac": "electron-builder --mac --arm64",
     "dist:win": "electron-builder --win --x64"
   },
+  "dependencies": {
+    "electron-updater": "^6.3.0"
+  },
   "devDependencies": {
     "electron": "^36.0.0",
     "electron-builder": "^25.0.0"
@@ -22,9 +25,17 @@
     "directories": {
       "output": "../dist-electron"
     },
+    "publish": [
+      {
+        "provider": "generic",
+        "url": "xx",
+        "channel": "latest"
+      }
+    ],
     "files": [
       "main.js",
       "preload.js",
+      "splash.html",
       "assets/**"
     ],
     "extraResources": [
@@ -58,6 +69,11 @@
         "from": "../ai-config",
         "to": "ai-config",
         "filter": ["auth.json", "settings.json", "claude.json", "CLAUDE.md", "skills/**", ".claude/agents/**"]
+      },
+      {
+        "from": "resources/whisper",
+        "to": "whisper",
+        "filter": ["**/*"]
       }
     ],
     "mac": {

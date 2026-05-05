@@ -10,6 +10,10 @@ import { Button, Card, Modal, Input, Badge } from './ui/primitives';
 import { cn } from './ui/cn';
 
 const SCHEDULE_PRESETS = [
+  { value: 'every_1m', label: '每分钟' },
+  { value: 'every_5m', label: '每 5 分钟' },
+  { value: 'every_10m', label: '每 10 分钟' },
+  { value: 'every_15m', label: '每 15 分钟' },
   { value: 'every_30m', label: '每 30 分钟' },
   { value: 'every_1h', label: '每小时' },
   { value: 'every_2h', label: '每 2 小时' },

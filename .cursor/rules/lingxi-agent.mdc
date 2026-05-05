@@ -121,10 +121,10 @@ src/
 ├── api/client.js         # API 请求封装
 ├── state/useStore.js     # Zustand 全局状态
 ├── ui/                   # 通用 UI 组件
-│   ├── AppShell.jsx      # 主布局壳
+│   ├── AppShell.jsx      # 主布局壳（顶部导航：主导航5项 + 辅助导航5项）
 │   ├── primitives.jsx    # 原子组件
 │   ├── cn.js             # className 合并工具
-│   ├── SidebarSessions.jsx
+│   ├── SidebarSessions.jsx # 会话列表（置顶/重命名/批量删除）
 │   ├── ModelSwitcher.jsx
 │   ├── RouterPill.jsx
 │   └── ErrorBoundary.jsx
@@ -142,8 +142,18 @@ src/
 │   ├── SettingsPage.jsx
 │   ├── ProfilesPage.jsx  # 接入点管理
 │   ├── AppearancePage.jsx # 主题设置
+│   ├── MemoryPage.jsx    # 长期记忆管理
+│   ├── NexusSettingsPage.jsx # 网络与协作设置
 │   └── UsagePage.jsx     # 用量统计 + 预算预警
+├── nexus/                # Agent 间对话（Project Nexus）
+│   ├── NexusPage.jsx     # 统一 Nexus 仪表盘（发现/联系人/对话三合一）
+│   ├── NearbyPage.jsx    # 附近面板（已整合入 NexusPage）
+│   ├── ContactsPage.jsx  # 联系人面板（已整合入 NexusPage）
+│   ├── A2AConversationView.jsx # Agent 对话观察视图（已整合入 NexusPage）
+│   ├── A2AMessageBubble.jsx    # 专用消息气泡
+│   └── StartA2AModal.jsx       # 发起对话弹窗
 ├── AgentFactoryPage.jsx  # 智能体工厂 + 模板市场
+├── WorkflowPage.jsx      # 可视化工作流编排（拖拽节点式编辑器）
 ├── SkillsPage.jsx        # 技能管理
 ├── KnowledgePage.jsx     # 知识库管理
 ├── MCPPage.jsx           # MCP 管理
@@ -176,6 +186,7 @@ backend-desktop/
 ├── config/config.go     # 配置
 ├── db/
 │   ├── db.go            # 数据库初始化 + CRUD
+│   ├── nexus.go         # Nexus 表 CRUD（peers/contacts/a2a）
 │   └── mcp_agent.go     # MCP-Agent 关联
 ├── handler/             # HTTP Handler
 │   ├── agent.go         # 智能体 CRUD
@@ -188,11 +199,21 @@ backend-desktop/
 │   ├── usage.go         # 用量统计
 │   ├── im_connector.go  # IM 连接器
 │   ├── scheduled.go     # 定时任务 CRUD
+│   ├── nexus.go         # Nexus 对外 API + 设置
+│   ├── nexus_contact.go # 建联管理
+│   ├── a2a_conversation.go # A2A 对话管理
+│   ├── agent_nexus_config.go # Agent 对外设置 CRUD
 │   ├── router_status.go # 路由状态
-│   ├── tasks.go         # 任务管理
+│   ├── tasks.go         # 后台任务管理
+│   ├── memory.go        # 长期记忆 CRUD + 消息固定
+│   ├── transcribe.go    # 语音识别（本地 whisper.cpp 优先，回退远端 API）
 │   └── ws_hub.go        # WebSocket Hub
 ├── connector/           # IM 连接器实现
 ├── model/model.go       # 数据模型
+├── nexus/               # Agent 间对话引擎
+│   ├── discovery.go     # mDNS 发现服务
+│   ├── conversation.go  # 对话执行引擎
+│   └── http_client.go   # HTTP 通信工具
 ├── router/              # AI 引擎路由
 ├── scheduler/           # 定时任务调度器
 └── usage/               # 用量计算 + 定价
@@ -229,9 +250,11 @@ backend-desktop/
 
 ```
 dist-electron/
-├── mac-arm64/灵犀.app      # 可直接运行
-├── 灵犀-1.0.0-arm64.dmg    # 安装包
-└── 灵犀-1.0.0-arm64-mac.zip
+├── mac-arm64/灵犀.app              # 可直接运行
+├── 灵犀-{version}-arm64.dmg        # 安装包
+├── 灵犀-{version}-arm64-mac.zip    # 自动更新包
+├── 灵犀-{version}-arm64-mac.zip.blockmap
+└── latest-mac.yml                   # 版本清单（electron-updater 使用）
 ```
 
 ### 安装（覆盖）
@@ -243,6 +266,24 @@ cp -R "dist-electron/mac-arm64/灵犀.app" "/Applications/灵犀.app"
 xattr -cr "/Applications/灵犀.app"
 open "/Applications/灵犀.app"
 ```
+
+### 自动更新发版流程
+
+应用内置 `electron-updater`（generic provider），发版流程：
+
+1. 修改 `electron/package.json` 中的 `version` 字段（语义化版本）
+2. 运行 `./build-desktop.sh`
+3. 将以下三个文件上传到 CDN（URL 配置在 `electron/package.json` build.publish）：
+   - `dist-electron/latest-mac.yml` — 版本清单
+   - `dist-electron/灵犀-{version}-arm64-mac.zip` — 增量更新包
+   - `dist-electron/灵犀-{version}-arm64-mac.zip.blockmap` — 差量描述
+
+运行时行为：
+- 应用启动 10 秒后自动检查更新，之后每 4 小时检查一次
+- 发现新版本 → 弹窗提示下载 → 下载完成弹窗提示重启安装
+- 用户也可在「设置 → 关于与更新」手动触发检查
+- 前端通过 `electronAPI.checkForUpdate()` 和 `electronAPI.onUpdateStatus()` 与主进程通信
+- 开发模式（`app.isPackaged === false`）跳过更新检查
 
 ---
 
@@ -275,10 +316,12 @@ NPM_CONFIG_CACHE=/tmp/npm-lingxi-cache npm install [package] --force
 - [x] Tailwind + primitives 统一 UI 体系
 - [x] 6 套主题（light/dark/midnight/cyber/aurora/cosmos）
 - [x] AnimatePresence 页面切换动画
+- [x] 顶部导航栏（主导航 5 项：对话/智能体/技能/知识库/MCP + 辅助导航 5 项：Nexus/IM/工作流/定时/设置）
 - [x] 代码块语法高亮 + 复制按钮（prism-react-renderer）
 - [x] 消息复制按钮
 - [x] 虚拟滚动（100+ 条消息自动启用）
-- [x] 会话重命名（双击编辑）
+- [x] 会话重命名（双击编辑）+ 会话置顶（Pin to top）
+- [x] 会话批量删除
 - [x] Modal 化删除确认
 - [x] 全文消息搜索（Cmd+K）
 - [x] 对话导出为 Markdown
@@ -287,7 +330,7 @@ NPM_CONFIG_CACHE=/tmp/npm-lingxi-cache npm install [package] --force
 - [x] 统一 Agent 模式（移除 Chat/Plan/Agent 切换）
 - [x] 交互式信息收集块（选择块 + 输入块）
 - [x] 对话头像（用户 + 智能体）
-- [x] 四步引导式智能体创建向导（身份/角色/能力/预览）
+- [x] 五步引导式智能体创建向导（身份/角色/能力/对外设置/预览）
 - [x] 图片粘贴（Cmd+V）+ 聊天中图片展示
 - [x] 定时任务管理页面（创建/编辑/删除/开关/执行记录）
 - [x] 交互式向导流（多选择题逐一展示 + 前后翻页 + 汇总确认）
@@ -296,6 +339,15 @@ NPM_CONFIG_CACHE=/tmp/npm-lingxi-cache npm install [package] --force
 - [x] 消息编辑/重发（hover 编辑按钮 + textarea 内联编辑 + 保存并重发）
 - [x] 消息反馈（thumbs up/down，持久化到 SQLite，选中高亮）
 - [x] 知识库检索可视化（RAG Citation：内联 [N] 上角标 + hover 弹出引用卡片 + 底部引用列表）
+- [x] 语音输入（MediaRecorder 录音 + 后端 OpenAI 兼容 Whisper API 识别，点击录音 → 停止 → 转录 → 文字填入输入框）
+- [x] TTS 朗读（Web Speech API，AssistantBubble 朗读/停止按钮）
+- [x] 文件拖拽对话（拖入文本/代码文件，内容作为附件发送）
+- [x] 快捷截屏（Cmd+Shift+S 全局快捷键 + 按钮截屏，图片填入输入框）
+- [x] 消息固定（Pin 按钮，用户/助理消息均支持）
+- [x] 快捷回复建议（assistant 回复后推荐 2-3 个后续问题胶囊按钮）
+- [x] 长期记忆管理 UI（设置 > 长期记忆：查看/添加/删除/分类/清空）
+- [x] 可视化工作流编排（WorkflowPage：拖拽节点式编辑器，支持提示词/条件/循环/延迟/代码/输出 6 种节点）
+- [x] 对话中止按钮（abort 正在进行的 AI 回复）
 
 ### 后端
 - [x] 知识库支持 PDF/DOCX 格式
@@ -303,19 +355,54 @@ NPM_CONFIG_CACHE=/tmp/npm-lingxi-cache npm install [package] --force
 - [x] 预算预警功能
 - [x] 费用估算兜底（非官方 API 用本地定价表估算）
 - [x] 技能在线编辑/导出 API
-- [x] Smithery.ai 市场代理 API
+- [x] Smithery.ai 市场代理 API（搜索/分类/详情/安装）
 - [x] 智能体 temperature / max_tokens 参数
 - [x] OpenAI reasoning token 透传（bridge 层拦截并生成 Anthropic thinking 事件）
-- [x] 定时任务调度器（scheduled_tasks + scheduled_task_runs 表，后台 goroutine 定期检查）
+- [x] 定时任务调度器（scheduled_tasks + scheduled_task_runs 表，15 秒检查间隔，Go 侧时间比较）
 - [x] 定时任务 CRUD + 手动触发 + 桌面通知（WS desktop_notify 事件）
 - [x] 防死循环保护（禁止 Cursor 专有工具 + isNonExistentTool 检测）
 - [x] OpenAI 兼容模型技能识别增强（buildSkillInventory 注入已安装技能清单）
 - [x] 消息编辑接口（PUT /api/messages/:id + 删除后续消息）
 - [x] 消息反馈接口（POST /api/messages/:id/feedback，feedback 列迁移）
 - [x] 知识库引用标注指令（system prompt 追加 KB_CITATIONS 格式指令）
+- [x] 跨会话长期记忆（memories 表 CRUD + 按智能体隔离）
+- [x] 消息固定接口（POST /api/messages/:id/pin，pinned 列迁移）
+- [x] 语音识别（POST /api/transcribe → 本地 whisper.cpp 离线识别，回退远端 API）
+- [x] Electron desktopCapturer 截屏（capture-screen IPC handler + 全局快捷键推送）
+- [x] 会话文件夹数据模型（sessions.folder 列 + UpdateSession 支持 folder）
+- [x] 会话置顶（sessions.pinned 列 + UpdateSession 支持 pinned）
+- [x] 会话批量删除（POST /api/sessions/batch-delete）
+- [x] 技能批量上传（POST /api/skills/batch-upload）
+- [x] 对话中止（POST /api/chat/abort）
+- [x] 对话批量发送（POST /api/chat/batch）
+- [x] 挂起任务查询与清除（GET/DELETE /api/sessions/:id/pending）
+- [x] 智能体工作流数据模型（agents.post_actions 列）
+- [x] 运行时密钥注入（POST /api/runtime/active-secret）
+
+### Agent 间对话（Project Nexus）
+- [x] 局域网 mDNS 自动发现（_lingxi._tcp 服务广播 + 10s 扫描）
+- [x] 手动建联 + PSK 密钥验证
+- [x] NexusTokenAuth 中间件（/info、/connect-request、/connect-respond 免验证，其余需 X-Nexus-Token）
+- [x] 一对一 Agent 自动对话引擎（message/proposal/decision/handoff/close）
+- [x] 流式实时对话（每端映射独立 Claude 会话，token 级流式 WS 推送）
+- [x] 双向流式对话（跨实例 stream-token 转发，双方均可实时看到对方 Agent 思考和输出）
+- [x] 持久会话（local_session_id 关联 sessions 表，跨轮次保持上下文）
+- [x] 统一 Bubble 渲染（A2AAgentBubble 组件 + BlocksRenderer，完整 Markdown/代码高亮/思考块/工具块）
+- [x] 己方/对方 Agent 视觉区分（不同颜色头像+标签+边框，紫色=对方，主题色=己方）
+- [x] 发起方和接收方均可实时观察 Agent 流式输出
+- [x] 智能滚动（stick-to-bottom：用户上滚不强制拉回）
+- [x] 人类介入（暂停/接管/终止/handoff 自动暂停通知）
+- [x] 对话摘要自动生成 + 审批流程
+- [x] 接收方完整邀请流程（主题/目标展示 + Agent 选择器 + 接受/拒绝）
+- [x] Agent 对外设置（公开/能力标签/授权级别/禁止透露/知识库限定）
+- [x] 统一 Nexus 仪表盘（合并发现/联系人/对话）+ 网络与协作设置
+- [x] Zustand nexus 状态切片（含 A2A 流式状态路由）+ api/client.js 调用方法
 
 ### 平台
 - [x] IM 集成（企业微信/钉钉/飞书）
 - [x] MCP 工具管理
-- [x] 技能管理（AI 生成/ZIP 导入/在线编辑/导出/市场安装）
+- [x] 技能管理（AI 生成/ZIP 导入/批量上传/在线编辑/导出/市场安装）
 - [x] Windows 构建支持（NSIS + Portable）
+- [x] 冷启动优化（Splash 页立即显示，后端就绪后无缝切换）
+- [x] 本地离线语音识别（内置 whisper.cpp + ggml-base 模型）
+- [x] 自动更新（electron-updater + generic CDN provider，检查/下载/安装 + 设置页面更新管理）

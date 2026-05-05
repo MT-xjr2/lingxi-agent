@@ -21,13 +21,13 @@ func ListSessions(c *gin.Context) {
 	if agentIDStr != "" {
 		agentID, _ := strconv.ParseInt(agentIDStr, 10, 64)
 		rows, err = db.DB.Query(`
-			SELECT id, title, message_count, COALESCE(agent_id,0), COALESCE(pinned,0), created_at, updated_at
-			FROM sessions WHERE COALESCE(agent_id,0)=? ORDER BY COALESCE(pinned,0) DESC, updated_at DESC
+			SELECT id, title, message_count, COALESCE(agent_id,0), COALESCE(pinned,0), COALESCE(folder,''), created_at, updated_at
+			FROM sessions WHERE COALESCE(agent_id,0)=? AND COALESCE(is_a2a,0)=0 ORDER BY COALESCE(pinned,0) DESC, updated_at DESC
 		`, agentID)
 	} else {
 		rows, err = db.DB.Query(`
-			SELECT id, title, message_count, COALESCE(agent_id,0), COALESCE(pinned,0), created_at, updated_at
-			FROM sessions ORDER BY COALESCE(pinned,0) DESC, updated_at DESC
+			SELECT id, title, message_count, COALESCE(agent_id,0), COALESCE(pinned,0), COALESCE(folder,''), created_at, updated_at
+			FROM sessions WHERE COALESCE(is_a2a,0)=0 ORDER BY COALESCE(pinned,0) DESC, updated_at DESC
 		`)
 	}
 	if err != nil {
@@ -40,7 +40,7 @@ func ListSessions(c *gin.Context) {
 	sessions := make([]model.Session, 0)
 	for rows.Next() {
 		var s model.Session
-		if err := rows.Scan(&s.ID, &s.Title, &s.MessageCount, &s.AgentID, &s.Pinned, &s.CreatedAt, &s.UpdatedAt); err != nil {
+		if err := rows.Scan(&s.ID, &s.Title, &s.MessageCount, &s.AgentID, &s.Pinned, &s.Folder, &s.CreatedAt, &s.UpdatedAt); err != nil {
 			continue
 		}
 		sessions = append(sessions, s)
@@ -80,12 +80,13 @@ func UpdateSession(c *gin.Context) {
 	var body struct {
 		Title  *string `json:"title"`
 		Pinned *bool   `json:"pinned"`
+		Folder *string `json:"folder"`
 	}
 	if err := c.ShouldBindJSON(&body); err != nil {
 		c.Status(http.StatusBadRequest)
 		return
 	}
-	if body.Title == nil && body.Pinned == nil {
+	if body.Title == nil && body.Pinned == nil && body.Folder == nil {
 		c.Status(http.StatusBadRequest)
 		return
 	}
@@ -99,6 +100,9 @@ func UpdateSession(c *gin.Context) {
 			pinVal = 1
 		}
 		db.DB.Exec(`UPDATE sessions SET pinned=? WHERE id=?`, pinVal, sessionID)
+	}
+	if body.Folder != nil {
+		db.DB.Exec(`UPDATE sessions SET folder=? WHERE id=?`, *body.Folder, sessionID)
 	}
 	c.Status(http.StatusOK)
 }
@@ -126,6 +130,28 @@ func DeleteSession(c *gin.Context) {
 	c.Status(http.StatusOK)
 }
 
+// BatchDeleteSessions POST /api/sessions/batch-delete
+func BatchDeleteSessions(c *gin.Context) {
+	var body struct {
+		IDs []int64 `json:"ids"`
+	}
+	if err := c.ShouldBindJSON(&body); err != nil || len(body.IDs) == 0 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "ids 不能为空"})
+		return
+	}
+	deleted := 0
+	for _, id := range body.IDs {
+		db.DB.Exec(`DELETE FROM messages WHERE session_id=?`, id)
+		res, err := db.DB.Exec(`DELETE FROM sessions WHERE id=?`, id)
+		if err != nil {
+			continue
+		}
+		n, _ := res.RowsAffected()
+		deleted += int(n)
+	}
+	c.JSON(http.StatusOK, gin.H{"deleted": deleted})
+}
+
 // ListMessages GET /api/sessions/:id/messages
 func ListMessages(c *gin.Context) {
 	sessionID, err := strconv.ParseInt(c.Param("id"), 10, 64)
@@ -142,7 +168,7 @@ func ListMessages(c *gin.Context) {
 	}
 
 	rows, err := db.DB.Query(`
-		SELECT id, session_id, role, content, COALESCE(usage,''), COALESCE(feedback,''), created_at
+		SELECT id, session_id, role, content, COALESCE(usage,''), COALESCE(feedback,''), COALESCE(pinned,0), created_at
 		FROM messages WHERE session_id=? ORDER BY id ASC
 	`, sessionID)
 	if err != nil {
@@ -154,7 +180,7 @@ func ListMessages(c *gin.Context) {
 	msgs := make([]model.Message, 0)
 	for rows.Next() {
 		var m model.Message
-		if err := rows.Scan(&m.ID, &m.SessionID, &m.Role, &m.Content, &m.Usage, &m.Feedback, &m.CreatedAt); err != nil {
+		if err := rows.Scan(&m.ID, &m.SessionID, &m.Role, &m.Content, &m.Usage, &m.Feedback, &m.Pinned, &m.CreatedAt); err != nil {
 			continue
 		}
 		msgs = append(msgs, m)
@@ -175,7 +201,7 @@ func SearchMessages(c *gin.Context) {
 		       COALESCE(s.title,'') AS session_title
 		FROM messages m
 		LEFT JOIN sessions s ON s.id = m.session_id
-		WHERE m.content LIKE '%' || ? || '%'
+		WHERE m.content LIKE '%' || ? || '%' AND COALESCE(s.is_a2a,0)=0
 		ORDER BY m.created_at DESC
 		LIMIT 50
 	`, q)

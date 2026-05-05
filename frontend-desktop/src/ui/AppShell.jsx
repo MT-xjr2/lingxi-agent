@@ -13,9 +13,11 @@ import IMConnectorPage from '../IMConnectorPage';
 import MCPPage from '../MCPPage';
 import AgentFactoryPage from '../AgentFactoryPage';
 import ScheduledTasksPage from '../ScheduledTasksPage';
+import WorkflowPage from '../WorkflowPage';
+import NexusPage from '../nexus/NexusPage';
 import { ToastStack, Modal } from './primitives';
 import { cn } from './cn';
-import { MessageSquare, Settings as SettingsIcon, Brain, BookOpen, MessageCircle, Plug, Sparkles, PanelLeftClose, PanelLeftOpen, Clock } from 'lucide-react';
+import { MessageSquare, Settings as SettingsIcon, Brain, BookOpen, MessageCircle, Plug, Sparkles, PanelLeftClose, PanelLeftOpen, Clock, Workflow, Globe } from 'lucide-react';
 
 const SHORTCUTS = [
   { keys: ['⌘', 'K'], desc: '搜索消息' },
@@ -23,6 +25,7 @@ const SHORTCUTS = [
   { keys: ['⌘', 'B'], desc: '折叠/展开侧边栏' },
   { keys: ['⌘', ','], desc: '打开设置' },
   { keys: ['⌘', '/'], desc: '显示快捷键面板' },
+  { keys: ['⌘', '⇧', 'S'], desc: '截屏到输入框' },
   { keys: ['Enter'], desc: '发送消息' },
   { keys: ['Shift', 'Enter'], desc: '换行' },
   { keys: ['/'], desc: '唤起斜杠命令' },
@@ -36,13 +39,20 @@ const pageMotion = {
   transition: { duration: 0.25, ease: [.22, 1, .36, 1] },
 };
 
+// 主导航（居中带文字标签）
 const NAV_TABS = [
   { id: 'chat', label: '对话', icon: MessageSquare },
   { id: 'agents', label: '智能体', icon: Sparkles },
   { id: 'skills', label: '技能', icon: Brain },
   { id: 'knowledge', label: '知识库', icon: BookOpen },
   { id: 'mcp', label: 'MCP', icon: Plug },
+];
+
+// 右侧辅助导航（仅图标）
+const RIGHT_TABS = [
+  { id: 'nexus', label: 'Nexus', icon: Globe },
   { id: 'im', label: 'IM', icon: MessageCircle },
+  { id: 'workflow', label: '工作流', icon: Workflow },
   { id: 'scheduled', label: '定时', icon: Clock },
   { id: 'settings', label: '设置', icon: SettingsIcon },
 ];
@@ -88,8 +98,11 @@ export function AppShell() {
           <div className="ml-2"><AgentStatePill /></div>
         </div>
 
-        {/* 中间：Tab 导航 */}
-        <nav className="app-no-drag flex-1 flex items-center justify-center gap-0.5 mx-4" aria-label="主导航">
+        {/* 左侧拖拽占位 */}
+        <div className="flex-1 min-w-[24px]" />
+
+        {/* 中间：主导航（图标+文字） */}
+        <nav className="app-no-drag flex items-center justify-center gap-0.5" aria-label="主导航">
           {NAV_TABS.map((tab) => {
             const Icon = tab.icon;
             const active = view === tab.id;
@@ -97,8 +110,9 @@ export function AppShell() {
               <button
                 key={tab.id}
                 onClick={() => setView(tab.id)}
+                title={tab.label}
                 className={cn(
-                  'relative flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all duration-200',
+                  'relative flex items-center justify-center gap-1 rounded-lg text-xs font-medium transition-all duration-200 px-2.5 py-1.5',
                   active
                     ? 'text-[color:var(--accent)]'
                     : 'text-[color:var(--text-soft)] hover:text-[color:var(--text)] hover:bg-[color:var(--bg-soft)]'
@@ -112,7 +126,7 @@ export function AppShell() {
                     transition={{ type: 'spring', stiffness: 400, damping: 30 }}
                   />
                 )}
-                <span className="relative z-10 flex items-center gap-1.5">
+                <span className="relative z-10 flex items-center gap-1">
                   <Icon size={14} />
                   <span>{tab.label}</span>
                 </span>
@@ -121,8 +135,32 @@ export function AppShell() {
           })}
         </nav>
 
-        {/* 右侧：路由状态 + 模型切换 + 侧边栏按钮 */}
-        <div className="app-no-drag flex items-center gap-2 shrink-0">
+        {/* 右侧拖拽占位 */}
+        <div className="flex-1 min-w-[24px]" />
+
+        {/* 右侧：辅助导航（仅图标）+ 路由状态 + 模型切换 + 侧边栏 */}
+        <div className="app-no-drag flex items-center gap-0.5 shrink-0">
+          <div className="flex items-center gap-0.5 mr-2 border-r border-[color:var(--line)] pr-2">
+            {RIGHT_TABS.map((tab) => {
+              const Icon = tab.icon;
+              const active = view === tab.id;
+              return (
+                <button
+                  key={tab.id}
+                  onClick={() => setView(tab.id)}
+                  title={tab.label}
+                  className={cn(
+                    'relative p-1.5 rounded-lg transition-all duration-200',
+                    active
+                      ? 'text-[color:var(--accent)] bg-[color:var(--accent-soft)]'
+                      : 'text-[color:var(--text-faint)] hover:text-[color:var(--text)] hover:bg-[color:var(--bg-soft)]'
+                  )}
+                >
+                  <Icon size={15} />
+                </button>
+              );
+            })}
+          </div>
           <RouterPill />
           <ModelSwitcher />
           {showSidebar && (
@@ -184,6 +222,16 @@ export function AppShell() {
             {view === 'im' && (
               <motion.div key="im" className="flex-1 overflow-auto scrollable bg-[color:var(--bg)] p-4" {...pageMotion}>
                 <IMConnectorPage />
+              </motion.div>
+            )}
+            {view === 'workflow' && (
+              <motion.div key="workflow" className="flex-1 overflow-auto scrollable bg-[color:var(--bg)] p-6" {...pageMotion}>
+                <WorkflowPage />
+              </motion.div>
+            )}
+            {view === 'nexus' && (
+              <motion.div key="nexus" className="flex-1 flex flex-col min-h-0" {...pageMotion}>
+                <NexusPage />
               </motion.div>
             )}
             {view === 'scheduled' && (

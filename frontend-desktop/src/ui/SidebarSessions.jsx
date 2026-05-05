@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import { useStore } from '../state/useStore';
-import { Plus, MessageSquare, Trash2, Search, ChevronDown, Sparkles, Settings as SettingsIcon, Pencil, Pin } from 'lucide-react';
+import { Plus, MessageSquare, Trash2, Search, ChevronDown, Sparkles, Settings as SettingsIcon, Pencil, Pin, CheckSquare, Square, X } from 'lucide-react';
 import { Input, Button, Modal } from './primitives';
 import { cn } from './cn';
 
@@ -38,6 +38,7 @@ export function SidebarSessions() {
   const setActive = useStore((s) => s.setActiveSession);
   const createSession = useStore((s) => s.createSession);
   const deleteSession = useStore((s) => s.deleteSession);
+  const batchDeleteSessions = useStore((s) => s.batchDeleteSessions);
   const renameSession = useStore((s) => s.renameSession);
   const pinSession = useStore((s) => s.pinSession);
   const setView = useStore((s) => s.setView);
@@ -48,9 +49,37 @@ export function SidebarSessions() {
   const [q, setQ] = useState('');
   const [agentMenuOpen, setAgentMenuOpen] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState(null);
+  const [batchMode, setBatchMode] = useState(false);
+  const [selected, setSelected] = useState(new Set());
+  const [batchDeleteOpen, setBatchDeleteOpen] = useState(false);
   const filtered = sessions.filter((s) => !q || (s.title || '').toLowerCase().includes(q.toLowerCase()));
   const grouped = useMemo(() => groupSessionsByDate(filtered), [filtered]);
   const currentAgent = agents.find((a) => a.id === activeAgentId) || agents.find((a) => a.builtin) || agents[0];
+
+  const toggleSelect = useCallback((id) => {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }, []);
+
+  const selectAll = useCallback(() => {
+    setSelected(new Set(filtered.map((s) => s.id)));
+  }, [filtered]);
+
+  const exitBatchMode = useCallback(() => {
+    setBatchMode(false);
+    setSelected(new Set());
+  }, []);
+
+  const handleBatchDelete = useCallback(async () => {
+    if (selected.size === 0) return;
+    await batchDeleteSessions(Array.from(selected));
+    setBatchDeleteOpen(false);
+    exitBatchMode();
+  }, [selected, batchDeleteSessions, exitBatchMode]);
 
   const handleConfirmDelete = useCallback(async () => {
     if (deleteTarget) {
@@ -119,14 +148,43 @@ export function SidebarSessions() {
         </div>
       )}
 
-      <button
-        onClick={async () => { await createSession(); setView('chat'); }}
-        className="flex items-center justify-center gap-2 px-3 h-10 rounded-lg text-white transition-all duration-200
-          bg-gradient-to-r from-[color:var(--accent)] to-[#5e8bff]
-          hover:shadow-[0_8px_24px_var(--accent-glow)] hover:-translate-y-px active:translate-y-0 active:scale-[0.99] shadow-soft"
-      >
-        <Plus size={16} /> 新对话
-      </button>
+      {batchMode ? (
+        <div className="flex items-center gap-1.5">
+          <Button variant="outline" size="sm" className="flex-1" onClick={selectAll}>
+            <CheckSquare size={13} /> 全选
+          </Button>
+          <Button
+            variant="danger" size="sm" className="flex-1"
+            disabled={selected.size === 0}
+            onClick={() => setBatchDeleteOpen(true)}
+          >
+            <Trash2 size={13} /> 删除 {selected.size > 0 ? `(${selected.size})` : ''}
+          </Button>
+          <button onClick={exitBatchMode} className="p-1.5 rounded-lg text-[color:var(--text-faint)] hover:text-[color:var(--text)] hover:bg-[color:var(--bg-soft)] transition">
+            <X size={15} />
+          </button>
+        </div>
+      ) : (
+        <div className="flex items-center gap-1.5">
+          <button
+            onClick={async () => { await createSession(); setView('chat'); }}
+            className="flex-1 flex items-center justify-center gap-2 px-3 h-10 rounded-lg text-white transition-all duration-200
+              bg-gradient-to-r from-[color:var(--accent)] to-[#5e8bff]
+              hover:shadow-[0_8px_24px_var(--accent-glow)] hover:-translate-y-px active:translate-y-0 active:scale-[0.99] shadow-soft"
+          >
+            <Plus size={16} /> 新对话
+          </button>
+          {sessions.length > 0 && (
+            <button
+              onClick={() => setBatchMode(true)}
+              className="shrink-0 p-2 h-10 rounded-lg text-[color:var(--text-soft)] hover:text-[color:var(--text)] hover:bg-[color:var(--bg-soft)] border border-[color:var(--line)] transition"
+              title="批量管理"
+            >
+              <CheckSquare size={16} />
+            </button>
+          )}
+        </div>
+      )}
       <div className="relative">
         <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-[color:var(--text-faint)]" />
         <Input className="pl-8 h-9" placeholder="搜索对话…" value={q} onChange={(e) => setQ(e.target.value)} />
@@ -144,7 +202,10 @@ export function SidebarSessions() {
                   key={s.id}
                   session={s}
                   active={s.id === activeId}
-                  onClick={() => { setActive(s.id); setView('chat'); }}
+                  batchMode={batchMode}
+                  checked={selected.has(s.id)}
+                  onToggle={() => toggleSelect(s.id)}
+                  onClick={() => { if (batchMode) { toggleSelect(s.id); } else { setActive(s.id); setView('chat'); } }}
                   onDelete={() => setDeleteTarget(s)}
                   onRename={(title) => renameSession(s.id, title)}
                   onPin={() => pinSession(s.id, !s.pinned)}
@@ -170,11 +231,21 @@ export function SidebarSessions() {
           <Button variant="danger" size="sm" onClick={handleConfirmDelete}>删除</Button>
         </div>
       </Modal>
+
+      <Modal open={batchDeleteOpen} onClose={() => setBatchDeleteOpen(false)} title="批量删除" width={380}>
+        <p className="text-sm text-[color:var(--text-soft)] mb-4">
+          确定要删除选中的 <span className="font-medium text-[color:var(--text)]">{selected.size}</span> 个对话？此操作不可恢复。
+        </p>
+        <div className="flex justify-end gap-2">
+          <Button variant="outline" size="sm" onClick={() => setBatchDeleteOpen(false)}>取消</Button>
+          <Button variant="danger" size="sm" onClick={handleBatchDelete}>删除 {selected.size} 个对话</Button>
+        </div>
+      </Modal>
     </div>
   );
 }
 
-function SessionItem({ session, active, onClick, onDelete, onRename, onPin }) {
+function SessionItem({ session, active, batchMode, checked, onToggle, onClick, onDelete, onRename, onPin }) {
   const [editing, setEditing] = useState(false);
   const [editTitle, setEditTitle] = useState('');
   const inputRef = useRef(null);
@@ -197,20 +268,30 @@ function SessionItem({ session, active, onClick, onDelete, onRename, onPin }) {
   return (
     <div
       onClick={onClick}
-      onDoubleClick={(e) => { e.stopPropagation(); startEditing(); }}
+      onDoubleClick={(e) => { if (batchMode) return; e.stopPropagation(); startEditing(); }}
       className={cn(
         'group relative flex items-center gap-2 px-2.5 py-2 rounded-lg cursor-pointer transition-all duration-200',
-        active
-          ? 'bg-[color:var(--accent-soft)] text-[color:var(--accent)]'
-          : 'hover:bg-[color:var(--bg-soft)] text-[color:var(--text)] hover:translate-x-0.5',
+        batchMode && checked
+          ? 'bg-[color:var(--accent-soft)]/60 text-[color:var(--accent)]'
+          : active && !batchMode
+            ? 'bg-[color:var(--accent-soft)] text-[color:var(--accent)]'
+            : 'hover:bg-[color:var(--bg-soft)] text-[color:var(--text)] hover:translate-x-0.5',
       )}
     >
-      {active && (
+      {active && !batchMode && (
         <span className="absolute left-0 top-1.5 bottom-1.5 w-[2px] rounded-full bg-gradient-to-b from-[color:var(--accent)] to-[#5e8bff] shadow-[0_0_8px_var(--accent-glow)]" />
       )}
-      <MessageSquare size={14} className="shrink-0 opacity-70" />
+      {batchMode ? (
+        <span className={cn('shrink-0 w-4 h-4 rounded border flex items-center justify-center transition',
+          checked ? 'bg-[color:var(--accent)] border-[color:var(--accent)] text-white' : 'border-[color:var(--text-faint)]'
+        )}>
+          {checked && <CheckSquare size={12} />}
+        </span>
+      ) : (
+        <MessageSquare size={14} className="shrink-0 opacity-70" />
+      )}
       <div className="flex-1 min-w-0">
-        {editing ? (
+        {editing && !batchMode ? (
           <input
             ref={inputRef}
             value={editTitle}
@@ -227,7 +308,7 @@ function SessionItem({ session, active, onClick, onDelete, onRename, onPin }) {
           </>
         )}
       </div>
-      {!editing && (
+      {!editing && !batchMode && (
         <div className="opacity-0 group-hover:opacity-100 transition flex gap-0.5">
           <button
             className={cn('p-1 rounded', session.pinned ? 'text-[color:var(--accent)]' : 'text-[color:var(--text-faint)] hover:text-[color:var(--accent)]')}

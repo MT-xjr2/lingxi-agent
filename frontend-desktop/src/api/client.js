@@ -28,6 +28,7 @@ export const api = {
   renameSession: (id, title) => req('PATCH', `/api/sessions/${id}`, { title }),
   pinSession: (id, pinned) => req('PATCH', `/api/sessions/${id}`, { pinned }),
   deleteSession: (id) => req('DELETE', `/api/sessions/${id}`),
+  batchDeleteSessions: (ids) => req('POST', '/api/sessions/batch-delete', { ids }),
   listMessages: (id) => req('GET', `/api/sessions/${id}/messages`),
   setSessionAgent: (id, agent_id) => req('POST', `/api/sessions/${id}/agent`, { agent_id }),
 
@@ -81,6 +82,30 @@ export const api = {
   getRouterStatus: () => req('GET', '/api/router/status'),
   stopRouter: () => req('POST', '/api/router/stop'),
 
+  // memories
+  listMemories: (agentId = 0) => req('GET', `/api/memories?agent_id=${agentId}`),
+  createMemory: (data) => req('POST', '/api/memories', data),
+  deleteMemory: (id) => req('DELETE', `/api/memories/${id}`),
+  clearMemories: (agentId = 0) => req('DELETE', `/api/memories/clear?agent_id=${agentId}`),
+
+  // message pin
+  toggleMessagePin: (id, pinned) => req('POST', `/api/messages/${id}/pin`, { pinned }),
+
+  // 语音识别
+  transcribeAudio: async (blob) => {
+    const form = new FormData();
+    form.append('file', blob, 'audio.webm');
+    const res = await fetch('/api/transcribe', { method: 'POST', body: form, credentials: 'include' });
+    if (!res.ok) {
+      const text = await res.text().catch(() => '');
+      let msg = `HTTP ${res.status}`;
+      try { msg = JSON.parse(text).error || msg; } catch {}
+      throw new Error(msg);
+    }
+    const data = await res.json();
+    return data.text || '';
+  },
+
   // scheduled tasks
   listScheduledTasks: () => req('GET', '/api/scheduled-tasks'),
   createScheduledTask: (data) => req('POST', '/api/scheduled-tasks', data),
@@ -89,6 +114,26 @@ export const api = {
   toggleScheduledTask: (id, enabled) => req('POST', `/api/scheduled-tasks/${id}/toggle`, { enabled }),
   triggerScheduledTask: (id) => req('POST', `/api/scheduled-tasks/${id}/run`),
   listScheduledTaskRuns: (id) => req('GET', `/api/scheduled-tasks/${id}/runs`),
+
+  // ── Project Nexus: Agent-to-Agent ─────────────────────────────
+  getNexusSettings: () => req('GET', '/api/nexus/settings'),
+  updateNexusSettings: (data) => req('PUT', '/api/nexus/settings', data),
+  listPeers: () => req('GET', '/api/peers'),
+  listContacts: () => req('GET', '/api/contacts'),
+  sendConnectRequest: (data) => req('POST', '/api/contacts/request', data),
+  respondConnect: (id, accept) => req('POST', `/api/contacts/${id}/respond`, { accept }),
+  deleteContact: (id) => req('DELETE', `/api/contacts/${id}`),
+  listA2AConversations: () => req('GET', '/api/a2a-conversations'),
+  getA2AConversation: (id) => req('GET', `/api/a2a-conversations/${id}`),
+  createA2AConversation: (data) => req('POST', '/api/a2a-conversations', data),
+  pauseA2AConversation: (id) => req('POST', `/api/a2a-conversations/${id}/pause`),
+  takeoverA2AConversation: (id, content) => req('POST', `/api/a2a-conversations/${id}/takeover`, { content }),
+  terminateA2AConversation: (id) => req('POST', `/api/a2a-conversations/${id}/terminate`),
+  approveA2AConversation: (id, approved) => req('POST', `/api/a2a-conversations/${id}/approve`, { approved }),
+  acceptRemoteConversation: (id, localAgentId) => req('POST', `/api/a2a-conversations/${id}/accept-remote`, { local_agent_id: localAgentId }),
+  rejectRemoteConversation: (id) => req('POST', `/api/a2a-conversations/${id}/reject-remote`),
+  getAgentNexusConfig: (id) => req('GET', `/api/agents/${id}/nexus-config`),
+  updateAgentNexusConfig: (id, data) => req('PUT', `/api/agents/${id}/nexus-config`, data),
 };
 
 // ─── WebSocket ────────────────────────────────────────────────────

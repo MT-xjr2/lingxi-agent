@@ -238,6 +238,110 @@ func migrate() {
 		}
 	}
 
+	// ── 长期记忆表 ─────────────────────────────────────────────────
+	for _, s := range []string{
+		`CREATE TABLE IF NOT EXISTS memories (
+			id         INTEGER PRIMARY KEY AUTOINCREMENT,
+			agent_id   INTEGER NOT NULL DEFAULT 0,
+			content    TEXT    NOT NULL,
+			category   TEXT    NOT NULL DEFAULT 'general',
+			created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+		)`,
+		`CREATE INDEX IF NOT EXISTS idx_memories_agent ON memories(agent_id)`,
+	} {
+		if _, err := DB.Exec(s); err != nil {
+			log.Printf("[db] memories migrate: %v", err)
+		}
+	}
+
+	// 列级迁移：sessions.summary（对话摘要压缩）
+	addColumnIfMissing("sessions", "summary", "TEXT NOT NULL DEFAULT ''")
+	// 列级迁移：messages.pinned（消息置顶）
+	addColumnIfMissing("messages", "pinned", "INTEGER NOT NULL DEFAULT 0")
+	// 列级迁移：sessions.folder（会话分组）
+	addColumnIfMissing("sessions", "folder", "TEXT NOT NULL DEFAULT ''")
+	// 列级迁移：agents.post_actions（工作流后续动作）
+	addColumnIfMissing("agents", "post_actions", "TEXT NOT NULL DEFAULT '[]'")
+	// 列级迁移：sessions.is_a2a（标记 A2A 专用会话，从主会话列表中隐藏）
+	addColumnIfMissing("sessions", "is_a2a", "INTEGER NOT NULL DEFAULT 0")
+	// 列级迁移：a2a_conversations.remote_conv_id（对方侧的对话 ID 映射）
+	addColumnIfMissing("a2a_conversations", "remote_conv_id", "INTEGER NOT NULL DEFAULT 0")
+	// 列级迁移：a2a_conversations.local_session_id（关联本地会话，实现流式对话）
+	addColumnIfMissing("a2a_conversations", "local_session_id", "INTEGER NOT NULL DEFAULT 0")
+
+	// ── Project Nexus: Agent-to-Agent Communication ──────────────
+	for _, s := range []string{
+		`CREATE TABLE IF NOT EXISTS nexus_settings (
+			id          INTEGER PRIMARY KEY CHECK (id = 1),
+			visible     INTEGER NOT NULL DEFAULT 1,
+			nickname    TEXT    NOT NULL DEFAULT '',
+			listen_port INTEGER NOT NULL DEFAULT 3001
+		)`,
+		`INSERT OR IGNORE INTO nexus_settings (id, visible, nickname, listen_port) VALUES (1, 1, '', 3001)`,
+		`CREATE TABLE IF NOT EXISTS nexus_peers (
+			id           TEXT PRIMARY KEY,
+			nickname     TEXT    NOT NULL DEFAULT '',
+			host         TEXT    NOT NULL,
+			port         INTEGER NOT NULL,
+			agents_json  TEXT    NOT NULL DEFAULT '[]',
+			last_seen_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+		)`,
+		`CREATE TABLE IF NOT EXISTS nexus_contacts (
+			id            INTEGER PRIMARY KEY AUTOINCREMENT,
+			peer_id       TEXT    NOT NULL,
+			nickname      TEXT    NOT NULL DEFAULT '',
+			host          TEXT    NOT NULL,
+			port          INTEGER NOT NULL,
+			status        TEXT    NOT NULL DEFAULT 'pending',
+			shared_secret TEXT    NOT NULL DEFAULT '',
+			created_at    DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+		)`,
+		`CREATE TABLE IF NOT EXISTS agent_nexus_config (
+			agent_id             INTEGER PRIMARY KEY,
+			public               INTEGER NOT NULL DEFAULT 0,
+			public_name          TEXT    NOT NULL DEFAULT '',
+			capability_tags      TEXT    NOT NULL DEFAULT '[]',
+			auth_level           TEXT    NOT NULL DEFAULT 'readonly',
+			forbidden_info       TEXT    NOT NULL DEFAULT '',
+			public_knowledge_ids TEXT    NOT NULL DEFAULT '[]'
+		)`,
+		`CREATE TABLE IF NOT EXISTS a2a_conversations (
+			id                   INTEGER PRIMARY KEY AUTOINCREMENT,
+			local_agent_id       INTEGER NOT NULL,
+			remote_agent_name    TEXT    NOT NULL,
+			remote_peer_id       TEXT    NOT NULL,
+			remote_peer_nickname TEXT    NOT NULL DEFAULT '',
+			topic                TEXT    NOT NULL DEFAULT '',
+			goal                 TEXT    NOT NULL DEFAULT '',
+			initial_prompt       TEXT    NOT NULL DEFAULT '',
+			max_rounds           INTEGER NOT NULL DEFAULT 10,
+			current_round        INTEGER NOT NULL DEFAULT 0,
+			status               TEXT    NOT NULL DEFAULT 'active',
+			require_approval     INTEGER NOT NULL DEFAULT 1,
+			summary              TEXT    NOT NULL DEFAULT '',
+			decisions_json       TEXT    NOT NULL DEFAULT '[]',
+			initiated_by         TEXT    NOT NULL DEFAULT 'local',
+			deadline             DATETIME DEFAULT NULL,
+			created_at           DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+			updated_at           DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+		)`,
+		`CREATE TABLE IF NOT EXISTS a2a_messages (
+			id               INTEGER PRIMARY KEY AUTOINCREMENT,
+			conversation_id  INTEGER NOT NULL,
+			sender           TEXT    NOT NULL,
+			sender_agent_name TEXT   NOT NULL DEFAULT '',
+			msg_type         TEXT    NOT NULL DEFAULT 'message',
+			content          TEXT    NOT NULL DEFAULT '',
+			structured_data  TEXT    NOT NULL DEFAULT '{}',
+			created_at       DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+		)`,
+		`CREATE INDEX IF NOT EXISTS idx_a2a_messages_conv ON a2a_messages(conversation_id)`,
+	} {
+		if _, err := DB.Exec(s); err != nil {
+			log.Printf("[db] nexus migrate: %v", err)
+		}
+	}
+
 	seedBuiltinProviders()
 	seedBuiltinAgent()
 }
@@ -1113,6 +1217,14 @@ func GetScheduledTask(id int64) (*ScheduledTask, error) {
 	return scanScheduledTask(DB.QueryRow(`SELECT `+schedCols+` FROM scheduled_tasks WHERE id=?`, id))
 }
 
+// fmtTimeForSQLite 将 time.Time 格式化为 SQLite 兼容的字符串（本地时间，无时区后缀）
+func fmtTimeForSQLite(t *time.Time) interface{} {
+	if t == nil {
+		return nil
+	}
+	return t.Local().Format("2006-01-02 15:04:05")
+}
+
 func CreateScheduledTask(t *ScheduledTask) (int64, error) {
 	stateful, notify, enabled := 0, 1, 1
 	if t.Stateful {
@@ -1127,7 +1239,7 @@ func CreateScheduledTask(t *ScheduledTask) (int64, error) {
 	res, err := DB.Exec(`INSERT INTO scheduled_tasks
 		(name, prompt, agent_id, cron_expr, stateful, notify_desktop, enabled, next_run_at)
 		VALUES (?,?,?,?,?,?,?,?)`,
-		t.Name, t.Prompt, t.AgentID, t.CronExpr, stateful, notify, enabled, t.NextRunAt)
+		t.Name, t.Prompt, t.AgentID, t.CronExpr, stateful, notify, enabled, fmtTimeForSQLite(t.NextRunAt))
 	if err != nil {
 		return 0, err
 	}
@@ -1150,7 +1262,7 @@ func UpdateScheduledTask(t *ScheduledTask) error {
 		notify_desktop=?, enabled=?, next_run_at=?, updated_at=CURRENT_TIMESTAMP
 		WHERE id=?`,
 		t.Name, t.Prompt, t.AgentID, t.CronExpr, stateful,
-		notify, enabled, t.NextRunAt, t.ID)
+		notify, enabled, fmtTimeForSQLite(t.NextRunAt), t.ID)
 	return err
 }
 
@@ -1172,7 +1284,7 @@ func ToggleScheduledTask(id int64, enabled bool) error {
 func UpdateScheduledTaskAfterRun(id int64, nextRunAt *time.Time) {
 	DB.Exec(`UPDATE scheduled_tasks SET
 		last_run_at=CURRENT_TIMESTAMP, next_run_at=?, run_count=run_count+1, updated_at=CURRENT_TIMESTAMP
-		WHERE id=?`, nextRunAt, id)
+		WHERE id=?`, fmtTimeForSQLite(nextRunAt), id)
 }
 
 func SetScheduledTaskSession(id, sessionID int64) {
@@ -1181,19 +1293,22 @@ func SetScheduledTaskSession(id, sessionID int64) {
 
 func GetDueScheduledTasks() ([]ScheduledTask, error) {
 	rows, err := DB.Query(`SELECT `+schedCols+` FROM scheduled_tasks
-		WHERE enabled=1 AND next_run_at IS NOT NULL AND next_run_at <= datetime('now')
+		WHERE enabled=1 AND next_run_at IS NOT NULL
 		ORDER BY next_run_at ASC`)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
+	now := time.Now()
 	out := make([]ScheduledTask, 0)
 	for rows.Next() {
 		t, err := scanScheduledTask(rows)
 		if err != nil {
 			continue
 		}
-		out = append(out, *t)
+		if t.NextRunAt != nil && !t.NextRunAt.After(now) {
+			out = append(out, *t)
+		}
 	}
 	return out, nil
 }

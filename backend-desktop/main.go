@@ -11,6 +11,7 @@ import (
 	"lingxi-agent/connector"
 	"lingxi-agent/db"
 	"lingxi-agent/handler"
+	"lingxi-agent/nexus"
 	"lingxi-agent/scheduler"
 
 	"github.com/gin-gonic/gin"
@@ -55,6 +56,7 @@ func main() {
 	api.POST("/sessions", handler.CreateSession)
 	api.PATCH("/sessions/:id", handler.UpdateSession)
 	api.DELETE("/sessions/:id", handler.DeleteSession)
+	api.POST("/sessions/batch-delete", handler.BatchDeleteSessions)
 	api.GET("/sessions/:id/messages", handler.ListMessages)
 	api.GET("/messages/search", handler.SearchMessages)
 	api.PUT("/messages/:id", handler.UpdateMessage)
@@ -138,6 +140,49 @@ func main() {
 	api.POST("/scheduled-tasks/:id/run", handler.TriggerScheduledTask)
 	api.GET("/scheduled-tasks/:id/runs", handler.ListScheduledTaskRuns)
 
+	// 长期记忆
+	api.GET("/memories", handler.ListMemories)
+	api.POST("/memories", handler.CreateMemory)
+	api.DELETE("/memories/clear", handler.ClearMemories)
+	api.DELETE("/memories/:id", handler.DeleteMemory)
+	api.POST("/messages/:id/pin", handler.ToggleMessagePin)
+
+	// 语音识别（转发到 OpenAI 兼容 Whisper API）
+	api.POST("/transcribe", handler.TranscribeAudio)
+
+	// ── Project Nexus: Agent-to-Agent Communication ──────────────
+	nexusAPI := api.Group("/nexus")
+	nexusAPI.Use(handler.NexusTokenAuth())
+	nexusAPI.GET("/info", handler.NexusInfo)
+	nexusAPI.POST("/connect-request", handler.NexusConnectRequest)
+	nexusAPI.POST("/connect-respond", handler.NexusConnectRespond)
+	nexusAPI.POST("/conversation/request", handler.NexusReceiveConvRequest)
+	nexusAPI.POST("/conversation/accept", handler.NexusReceiveConvAccept)
+	nexusAPI.POST("/conversation/reject", handler.NexusReceiveConvReject)
+	nexusAPI.POST("/conversation/message", handler.NexusReceiveMessage)
+	nexusAPI.POST("/conversation/pause", handler.NexusReceivePause)
+	nexusAPI.POST("/conversation/terminate", handler.NexusReceiveTerminate)
+	nexusAPI.POST("/conversation/stream-token", handler.NexusReceiveStreamToken)
+	nexusAPI.GET("/settings", handler.GetNexusSettings)
+	nexusAPI.PUT("/settings", handler.UpdateNexusSettings)
+
+	api.GET("/peers", handler.ListPeers)
+	api.GET("/contacts", handler.ListContacts)
+	api.POST("/contacts/request", handler.SendConnectRequest)
+	api.POST("/contacts/:id/respond", handler.RespondConnect)
+	api.DELETE("/contacts/:id", handler.DeleteContact)
+	api.POST("/a2a-conversations", handler.CreateA2AConversation)
+	api.GET("/a2a-conversations", handler.ListA2AConversations)
+	api.GET("/a2a-conversations/:id", handler.GetA2AConversation)
+	api.POST("/a2a-conversations/:id/pause", handler.PauseA2AConversation)
+	api.POST("/a2a-conversations/:id/takeover", handler.TakeoverA2AConversation)
+	api.POST("/a2a-conversations/:id/terminate", handler.TerminateA2AConversation)
+	api.POST("/a2a-conversations/:id/approve", handler.ApproveA2AConversation)
+	api.POST("/a2a-conversations/:id/accept-remote", handler.AcceptRemoteConversation)
+	api.POST("/a2a-conversations/:id/reject-remote", handler.RejectRemoteConversation)
+	api.GET("/agents/:id/nexus-config", handler.GetAgentNexusConfig)
+	api.PUT("/agents/:id/nexus-config", handler.UpsertAgentNexusConfig)
+
 	// Electron 启动时下发激活档案明文 token
 	api.POST("/runtime/active-secret", handler.SetActiveSecret)
 
@@ -152,6 +197,10 @@ func main() {
 		}
 		c.File(dist + "/index.html")
 	})
+
+	// 启动 Nexus Agent-to-Agent 通信服务
+	nexus.Init(handler.RunA2AStreamingTurn, handler.CreateA2ASession, handler.BroadcastWSEvent)
+	nexus.Global.Start()
 
 	// 启动定时任务调度器
 	scheduler.Init(handler.RunClaudeSync, func(taskName, summary string) {

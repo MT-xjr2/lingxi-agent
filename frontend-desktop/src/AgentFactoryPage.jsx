@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   Sparkles, Plus, Trash2, Edit3, Bot, Brain, BookOpen, Plug,
-  ArrowLeft, Wand2, Check, X, Shield, LayoutGrid, Download, Upload,
+  ArrowLeft, Wand2, Check, X, Shield, LayoutGrid, Download, Upload, Globe,
 } from 'lucide-react';
 import { cn } from './ui/cn';
 import { api } from './api/client';
@@ -74,6 +74,7 @@ const EMPTY = {
   allow_all: true,
   temperature: 0,
   max_tokens: 0,
+  post_actions: '[]',
 };
 
 export default function AgentFactoryPage({ onBack }) {
@@ -296,6 +297,7 @@ function AgentEditor({ open, value, onClose, onSave }) {
     { label: '身份', icon: Bot },
     { label: '角色', icon: Brain },
     { label: '能力', icon: Plug },
+    { label: '对外', icon: Globe },
     { label: '预览', icon: Check },
   ];
 
@@ -491,8 +493,13 @@ function AgentEditor({ open, value, onClose, onSave }) {
           </div>
         )}
 
-        {/* Step 3: 预览 */}
+        {/* Step 3: 对外设置（Nexus） */}
         {step === 3 && (
+          <NexusConfigStep agentId={form.id} />
+        )}
+
+        {/* Step 4: 预览 */}
+        {step === 4 && (
           <div className="space-y-4">
             <div className="surface p-5 flex items-start gap-4">
               <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-[color:var(--accent-soft)] to-transparent text-[color:var(--accent)] flex items-center justify-center text-2xl ring-1 ring-[color:var(--accent-soft)] shrink-0">
@@ -533,6 +540,127 @@ function Field({ label, children }) {
     <div>
       <div className="text-xs text-[color:var(--text-soft)] mb-1">{label}</div>
       {children}
+    </div>
+  );
+}
+
+function NexusConfigStep({ agentId }) {
+  const [config, setConfig] = useState({
+    public: false,
+    public_name: '',
+    capability_tags: '[]',
+    auth_level: 'readonly',
+    forbidden_info: '',
+    public_knowledge_ids: '[]',
+  });
+  const [tagInput, setTagInput] = useState('');
+  const [loaded, setLoaded] = useState(false);
+
+  useEffect(() => {
+    if (agentId > 0 && !loaded) {
+      api.getAgentNexusConfig(agentId).then((d) => {
+        setConfig(d);
+        setLoaded(true);
+      }).catch(() => setLoaded(true));
+    }
+  }, [agentId, loaded]);
+
+  const tags = (() => { try { return JSON.parse(config.capability_tags); } catch { return []; } })();
+
+  const addTag = () => {
+    const t = tagInput.trim();
+    if (t && !tags.includes(t)) {
+      const newTags = [...tags, t];
+      setConfig({ ...config, capability_tags: JSON.stringify(newTags) });
+    }
+    setTagInput('');
+  };
+
+  const removeTag = (tag) => {
+    const newTags = tags.filter(t => t !== tag);
+    setConfig({ ...config, capability_tags: JSON.stringify(newTags) });
+  };
+
+  const save = () => {
+    if (agentId > 0) {
+      api.updateAgentNexusConfig(agentId, config).catch(() => {});
+    }
+  };
+
+  useEffect(() => {
+    if (loaded && agentId > 0) save();
+  }, [config]);
+
+  return (
+    <div className="space-y-4">
+      <p className="text-xs text-[color:var(--text-faint)]">
+        配置此 Agent 在局域网内的对外可见性和权限。{!agentId && '保存智能体后即可生效。'}
+      </p>
+
+      <label className="flex items-center gap-3 p-3 rounded-lg bg-[color:var(--bg-soft)]">
+        <input
+          type="checkbox"
+          checked={config.public}
+          onChange={(e) => setConfig({ ...config, public: e.target.checked })}
+        />
+        <div>
+          <span className="text-sm text-[color:var(--text)]">对外公开</span>
+          <div className="text-[10px] text-[color:var(--text-faint)]">开启后，已建联的其他灵犀实例可发现并与此 Agent 对话</div>
+        </div>
+      </label>
+
+      {config.public && (
+        <>
+          <Field label="对外名称（可与内部名称不同）">
+            <Input
+              value={config.public_name}
+              onChange={(e) => setConfig({ ...config, public_name: e.target.value })}
+              placeholder="留空则使用 Agent 名称"
+            />
+          </Field>
+
+          <Field label="能力标签">
+            <div className="flex flex-wrap gap-1.5 mb-2">
+              {tags.map((tag) => (
+                <Badge key={tag} tone="accent" className="cursor-pointer" onClick={() => removeTag(tag)}>
+                  {tag} <X size={10} />
+                </Badge>
+              ))}
+            </div>
+            <div className="flex gap-2">
+              <Input
+                value={tagInput}
+                onChange={(e) => setTagInput(e.target.value)}
+                placeholder="输入标签后回车"
+                onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); addTag(); } }}
+                className="flex-1"
+              />
+              <Button variant="ghost" size="sm" onClick={addTag}>添加</Button>
+            </div>
+          </Field>
+
+          <Field label="授权级别">
+            <Select
+              value={config.auth_level}
+              onChange={(e) => setConfig({ ...config, auth_level: e.target.value })}
+            >
+              <option value="readonly">只读（仅提供咨询）</option>
+              <option value="suggest">可建议</option>
+              <option value="commit">可承诺（限预设规则内）</option>
+              <option value="full">完全授权</option>
+            </Select>
+          </Field>
+
+          <Field label="禁止透露的信息">
+            <Textarea
+              value={config.forbidden_info}
+              onChange={(e) => setConfig({ ...config, forbidden_info: e.target.value })}
+              placeholder="如：不要透露客户姓名和公司名..."
+              rows={2}
+            />
+          </Field>
+        </>
+      )}
     </div>
   );
 }

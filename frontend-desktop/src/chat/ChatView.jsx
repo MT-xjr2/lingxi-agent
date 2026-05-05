@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Bot, BookOpen, Brain, Cpu, Plug, Search, Download } from 'lucide-react';
+import { Bot, BookOpen, Brain, Cpu, Plug, Search, Download, Zap } from 'lucide-react';
 import { parseAssistantContent } from './blockUtils';
 import { useStore } from '../state/useStore';
 import { MessageList } from './MessageList';
@@ -10,6 +10,9 @@ import { Badge } from '../ui/primitives';
 export function ChatView() {
   const [useKB, setUseKB] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
+  const suggestedReplies = useStore((s) => s.suggestedReplies);
+  const sendMessage = useStore((s) => s.sendMessage);
+  const isStreaming = useStore((s) => s.isStreaming);
 
   useEffect(() => {
     const handler = (e) => {
@@ -26,6 +29,24 @@ export function ChatView() {
     <div className="flex-1 flex flex-col min-h-0">
       <ChatContextBar useKB={useKB} onSearchOpen={() => setSearchOpen(true)} />
       <MessageList />
+      {suggestedReplies.length > 0 && !isStreaming && (
+        <div className="px-6">
+          <div className="max-w-3xl mx-auto flex items-center gap-2 flex-wrap pb-2">
+            <Zap size={12} className="text-[color:var(--accent)] shrink-0" />
+            {suggestedReplies.map((reply, i) => (
+              <button
+                key={i}
+                onClick={() => sendMessage({ message: reply, useKB })}
+                className="px-3 py-1.5 rounded-full text-xs font-medium border border-[color:var(--line)] bg-[color:var(--bg-soft)]
+                  text-[color:var(--text-soft)] hover:border-[color:var(--accent)] hover:text-[color:var(--accent)]
+                  hover:bg-[color:var(--accent-soft)] transition-all"
+              >
+                {reply}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
       <Composer useKB={useKB} setUseKB={setUseKB} />
       <SearchModal open={searchOpen} onClose={() => setSearchOpen(false)} />
     </div>

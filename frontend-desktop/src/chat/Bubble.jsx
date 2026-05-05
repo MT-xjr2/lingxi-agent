@@ -1,8 +1,9 @@
 import { useState, useCallback, useRef, useEffect } from 'react';
-import { Copy, Check, RefreshCw, User, Sparkles, Pencil, X, Send, ThumbsUp, ThumbsDown } from 'lucide-react';
+import { Copy, Check, RefreshCw, User, Sparkles, Pencil, X, Send, ThumbsUp, ThumbsDown, Volume2, VolumeX, Pin } from 'lucide-react';
 import { BlocksRenderer, UsageFooter } from './blocks';
 import { parseAssistantContent } from './blockUtils';
 import { useStore } from '../state/useStore';
+import { api } from '../api/client';
 import { cn } from '../ui/cn';
 
 function parseUserContent(content) {
@@ -184,6 +185,7 @@ export function UserBubble({ message }) {
             >
               <Pencil size={14} />
             </button>
+            <PinButton message={message} />
           </div>
         )}
       </div>
@@ -195,6 +197,8 @@ export function UserBubble({ message }) {
 export function AssistantBubble({ message, live = false, liveBlocks = null }) {
   const blocks = liveBlocks || parseAssistantContent(message?.content || '');
   const [copied, setCopied] = useState(false);
+  const [speaking, setSpeaking] = useState(false);
+  const utteranceRef = useRef(null);
   const regenerate = useStore((s) => s.regenerate);
   const setFeedback = useStore((s) => s.setFeedback);
   const isStreaming = useStore((s) => s.isStreaming);
@@ -214,6 +218,32 @@ export function AssistantBubble({ message, live = false, liveBlocks = null }) {
     if (!message?.id || message.id < 0) return;
     setFeedback(message.id, feedback === val ? '' : val);
   }, [message?.id, feedback, setFeedback]);
+
+  const handleSpeak = useCallback(() => {
+    if (!window.speechSynthesis) return;
+    if (speaking) {
+      window.speechSynthesis.cancel();
+      setSpeaking(false);
+      return;
+    }
+    const text = extractTextFromBlocks(blocks);
+    if (!text) return;
+    const utterance = new SpeechSynthesisUtterance(text);
+    utterance.lang = 'zh-CN';
+    utterance.rate = 1.0;
+    utterance.pitch = 1.0;
+    utterance.onend = () => setSpeaking(false);
+    utterance.onerror = () => setSpeaking(false);
+    utteranceRef.current = utterance;
+    setSpeaking(true);
+    window.speechSynthesis.speak(utterance);
+  }, [blocks, speaking]);
+
+  useEffect(() => {
+    return () => {
+      if (speaking) window.speechSynthesis?.cancel();
+    };
+  }, [speaking]);
 
   const hasText = blocks.some(b => b.type === 'text' && b.text?.trim());
 
@@ -254,6 +284,16 @@ export function AssistantBubble({ message, live = false, liveBlocks = null }) {
             <div className="flex-1" />
 
             <div className="flex items-center gap-1 opacity-0 group-hover/msg:opacity-100 transition">
+              {window.speechSynthesis && (
+                <button
+                  onClick={handleSpeak}
+                  className={cn(actionBtnCls, speaking && '!border-[color:var(--accent)] !text-[color:var(--accent)] !bg-[color:var(--accent-soft)]')}
+                  title={speaking ? '停止朗读' : '朗读'}
+                >
+                  {speaking ? <VolumeX size={14} /> : <Volume2 size={14} />}
+                </button>
+              )}
+              {message?.id && <PinButton message={message} />}
               <button
                 onClick={handleCopy}
                 className={actionBtnCls}
@@ -275,5 +315,29 @@ export function AssistantBubble({ message, live = false, liveBlocks = null }) {
         )}
       </div>
     </div>
+  );
+}
+
+function PinButton({ message }) {
+  const [pinned, setPinned] = useState(!!message?.pinned);
+  const handlePin = useCallback(async () => {
+    if (!message?.id || message.id < 0) return;
+    const next = !pinned;
+    setPinned(next);
+    try {
+      await api.toggleMessagePin(message.id, next);
+    } catch {
+      setPinned(!next);
+    }
+  }, [message?.id, pinned]);
+
+  return (
+    <button
+      onClick={handlePin}
+      className={cn(actionBtnCls, pinned && '!border-amber-400 !text-amber-500 !bg-amber-500/10')}
+      title={pinned ? '取消固定' : '固定消息'}
+    >
+      <Pin size={14} />
+    </button>
   );
 }

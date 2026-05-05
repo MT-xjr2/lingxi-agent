@@ -1,9 +1,58 @@
-import { useEffect, useState } from 'react';
-import { Plus, Cpu, Pencil, Trash2, Zap, ExternalLink, ShieldCheck, Loader2, CheckCircle2, AlertCircle, Eye, EyeOff } from 'lucide-react';
+import { useEffect, useState, useMemo } from 'react';
+import {
+  Plus, Pencil, Trash2, Zap, ExternalLink, ShieldCheck, Loader2,
+  CheckCircle2, AlertCircle, Eye, EyeOff, Search, ChevronDown, ChevronRight,
+  ArrowLeft, Sparkles, Telescope, Cloud, Globe, Server, Brain, Cpu, Bot,
+  MessageSquare, CircuitBoard, Layers, Star, Flame, Box, Settings2,
+} from 'lucide-react';
 import { useStore } from '../state/useStore';
 import { api, electron } from '../api/client';
-import { Button, Input, Modal, Select, Badge, Card } from '../ui/primitives';
+import { Button, Input, Modal, Badge, Card, EmptyState } from '../ui/primitives';
+import { cn } from '../ui/cn';
 
+// ─── 供应商视觉主题映射 ──────────────────────────────────────────
+const PROVIDER_THEME = {
+  anthropic_official:  { icon: Sparkles,     gradient: 'from-amber-500 to-orange-600',       label: 'Claude',      color: '#d97706' },
+  dashscope_anthropic: { icon: Cloud,        gradient: 'from-orange-400 to-amber-600',       label: 'DashScope',   color: '#f59e0b' },
+  deepseek_anthropic:  { icon: Telescope,    gradient: 'from-blue-500 to-indigo-600',        label: 'DeepSeek',    color: '#6366f1' },
+  deepseek_openai:     { icon: Telescope,    gradient: 'from-blue-500 to-indigo-600',        label: 'DeepSeek',    color: '#6366f1' },
+  qwen_openai:         { icon: Cloud,        gradient: 'from-orange-500 to-red-500',         label: 'Qwen',        color: '#f97316' },
+  doubao_openai:       { icon: Flame,        gradient: 'from-rose-500 to-pink-600',          label: 'Doubao',      color: '#f43f5e' },
+  glm_openai:          { icon: Brain,        gradient: 'from-cyan-500 to-blue-600',          label: 'GLM',         color: '#06b6d4' },
+  moonshot_openai:     { icon: Star,         gradient: 'from-violet-500 to-purple-600',      label: 'Kimi',        color: '#8b5cf6' },
+  gemini_openai:       { icon: Globe,        gradient: 'from-blue-400 via-emerald-400 to-amber-400', label: 'Gemini', color: '#3b82f6' },
+  openrouter_openai:   { icon: Layers,       gradient: 'from-emerald-500 to-teal-600',       label: 'OpenRouter',  color: '#10b981' },
+  groq_openai:         { icon: Zap,          gradient: 'from-amber-400 to-orange-500',       label: 'Groq',        color: '#f59e0b' },
+  siliconflow_openai:  { icon: CircuitBoard, gradient: 'from-sky-500 to-blue-600',           label: 'SiliconFlow', color: '#0ea5e9' },
+  ollama_openai:       { icon: Server,       gradient: 'from-slate-500 to-slate-700',        label: 'Ollama',      color: '#64748b' },
+  openai_official:     { icon: Bot,          gradient: 'from-emerald-500 to-green-600',      label: 'OpenAI',      color: '#10b981' },
+  custom_anthropic:    { icon: Settings2,    gradient: 'from-gray-500 to-gray-600',          label: '自定义',      color: '#6b7280' },
+  custom_openai:       { icon: Settings2,    gradient: 'from-gray-500 to-gray-600',          label: '自定义',      color: '#6b7280' },
+};
+
+const DEFAULT_THEME = { icon: Cpu, gradient: 'from-gray-400 to-gray-600', label: '', color: '#9ca3af' };
+
+function getProviderTheme(code) {
+  return PROVIDER_THEME[code] || DEFAULT_THEME;
+}
+
+// ─── 供应商图标组件 ──────────────────────────────────────────────
+function ProviderIcon({ code, size = 'md', className }) {
+  const theme = getProviderTheme(code);
+  const Icon = theme.icon;
+  const sizes = { sm: 'w-8 h-8', md: 'w-10 h-10', lg: 'w-12 h-12' };
+  const iconSizes = { sm: 14, md: 18, lg: 22 };
+  return (
+    <div className={cn(
+      sizes[size], 'rounded-xl flex items-center justify-center shrink-0 bg-gradient-to-br text-white shadow-sm',
+      theme.gradient, className
+    )}>
+      <Icon size={iconSizes[size]} />
+    </div>
+  );
+}
+
+// ─── 主页面 ──────────────────────────────────────────────────────
 export function ProfilesPage() {
   const providers = useStore((s) => s.providers);
   const profiles = useStore((s) => s.profiles);
@@ -11,7 +60,8 @@ export function ProfilesPage() {
   const activate = useStore((s) => s.activateProfile);
   const pushNotification = useStore((s) => s.pushNotification);
 
-  const [editing, setEditing] = useState(null); // null | profile object | { __new: true }
+  const [editing, setEditing] = useState(null);
+  const [testStates, setTestStates] = useState({});
 
   useEffect(() => { refreshProfiles(); }, []);
 
@@ -22,19 +72,30 @@ export function ProfilesPage() {
   };
 
   const handleTest = async (p) => {
-    pushNotification({ title: '测试中…', body: `${p.name}` });
-    const r = await api.testProfile(p.id);
-    if (r.ok) pushNotification({ title: '连接成功', body: `${p.name}` });
-    else pushNotification({ title: '连接失败', body: r.error || '请检查 base_url 与密钥' });
+    setTestStates((s) => ({ ...s, [p.id]: 'testing' }));
+    try {
+      const r = await api.testProfile(p.id);
+      setTestStates((s) => ({ ...s, [p.id]: r.ok ? 'success' : 'fail' }));
+      if (!r.ok) pushNotification({ title: '连接失败', body: r.error || '请检查配置' });
+    } catch {
+      setTestStates((s) => ({ ...s, [p.id]: 'fail' }));
+    }
+    setTimeout(() => setTestStates((s) => { const n = { ...s }; delete n[p.id]; return n; }), 4000);
   };
+
+  const providerMap = useMemo(() => {
+    const m = {};
+    providers.forEach((p) => { m[p.id] = p; });
+    return m;
+  }, [providers]);
 
   return (
     <div className="max-w-5xl mx-auto py-6 px-6">
-      <div className="flex items-center justify-between mb-4">
+      <div className="flex items-center justify-between mb-6">
         <div>
           <h1 className="text-xl font-semibold">模型与接入点</h1>
-          <p className="text-sm text-[color:var(--text-soft)] mt-0.5">
-            原生 Anthropic 协议直连，或经本地路由层（llm-bridge）接入 DeepSeek / Qwen / Doubao / GLM / Gemini / OpenRouter / Ollama 等 OpenAI 协议供应商
+          <p className="text-sm text-[color:var(--text-soft)] mt-1">
+            选择供应商，填入密钥即可开始使用
           </p>
         </div>
         <Button onClick={() => setEditing({ __new: true })}>
@@ -43,59 +104,29 @@ export function ProfilesPage() {
       </div>
 
       {profiles.length === 0 ? (
-        <Card className="text-center py-10">
-          <div className="w-12 h-12 mx-auto rounded-xl bg-[color:var(--accent-soft)] text-[color:var(--accent)] flex items-center justify-center mb-3">
-            <Cpu size={22} />
-          </div>
-          <div className="font-medium">还没有接入点</div>
-          <p className="text-sm text-[color:var(--text-soft)] mt-1">点击右上角「新建接入点」快速接入 DeepSeek 或其他供应商</p>
-        </Card>
+        <EmptyState
+          icon={Cpu}
+          title="还没有接入点"
+          description="点击「新建接入点」选择供应商并填入密钥，即可开始对话"
+          action={
+            <Button onClick={() => setEditing({ __new: true })}>
+              <Plus size={14} /> 新建接入点
+            </Button>
+          }
+        />
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
           {profiles.map((p) => (
-            <Card key={p.id} className="flex flex-col gap-3">
-              <div className="flex items-start justify-between gap-3">
-                <div className="flex items-center gap-3 min-w-0">
-                  <div className="w-10 h-10 rounded-lg bg-[color:var(--accent-soft)] text-[color:var(--accent)] flex items-center justify-center shrink-0">
-                    <Cpu size={18} />
-                  </div>
-                  <div className="min-w-0">
-                    <div className="font-medium truncate flex items-center gap-2 flex-wrap">
-                      {p.name}
-                      {p.is_active && <Badge tone="accent">激活</Badge>}
-                      {p.provider_protocol === 'openai' ? (
-                        <Badge tone="info">OpenAI · 路由层</Badge>
-                      ) : (
-                        <Badge tone="default">Anthropic · 直连</Badge>
-                      )}
-                    </div>
-                    <div className="text-xs text-[color:var(--text-faint)] truncate">
-                      {p.provider_name || p.provider_code} · {p.model || '默认模型'}
-                    </div>
-                  </div>
-                </div>
-              </div>
-              <div className="text-xs text-[color:var(--text-soft)] space-y-1 font-mono">
-                <div className="truncate">URL: {p.base_url || '使用 provider 默认'}</div>
-                <div className="flex items-center gap-1">
-                  <ShieldCheck size={12} /> 密钥: {p.auth_token_mask || '未设置'}
-                </div>
-              </div>
-              <div className="flex items-center gap-2">
-                {!p.is_active && (
-                  <Button size="sm" onClick={() => activate(p.id)}>
-                    <Zap size={12} /> 设为激活
-                  </Button>
-                )}
-                <Button size="sm" variant="outline" onClick={() => handleTest(p)}>测试连接</Button>
-                <Button size="sm" variant="ghost" onClick={() => setEditing(p)}>
-                  <Pencil size={14} />
-                </Button>
-                <Button size="sm" variant="ghost" onClick={() => handleDelete(p)}>
-                  <Trash2 size={14} />
-                </Button>
-              </div>
-            </Card>
+            <ProfileCard
+              key={p.id}
+              profile={p}
+              provider={providerMap[p.provider_id]}
+              testState={testStates[p.id]}
+              onActivate={() => activate(p.id)}
+              onTest={() => handleTest(p)}
+              onEdit={() => setEditing(p)}
+              onDelete={() => handleDelete(p)}
+            />
           ))}
         </div>
       )}
@@ -115,41 +146,200 @@ export function ProfilesPage() {
   );
 }
 
+// ─── 接入点卡片 ──────────────────────────────────────────────────
+function ProfileCard({ profile: p, provider, testState, onActivate, onTest, onEdit, onDelete }) {
+  const theme = getProviderTheme(provider?.code);
+  const testIcon = testState === 'testing' ? Loader2
+    : testState === 'success' ? CheckCircle2
+    : testState === 'fail' ? AlertCircle : null;
+
+  return (
+    <Card className={cn(
+      'group relative flex flex-col gap-3 transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md overflow-hidden',
+      p.is_active && 'ring-1 ring-[color:var(--accent)]/40'
+    )}>
+      {/* 顶部渐变色条 */}
+      <div className={cn('absolute top-0 left-0 right-0 h-0.5 bg-gradient-to-r', theme.gradient)} />
+
+      <div className="flex items-start justify-between gap-3 pt-1">
+        <div className="flex items-center gap-3 min-w-0">
+          <ProviderIcon code={provider?.code} />
+          <div className="min-w-0">
+            <div className="font-medium truncate flex items-center gap-2">
+              {p.name}
+              {p.is_active && (
+                <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md text-[10px] font-semibold bg-emerald-500/10 text-emerald-600">
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                  使用中
+                </span>
+              )}
+            </div>
+            <div className="text-xs text-[color:var(--text-faint)] truncate mt-0.5 flex items-center gap-1.5">
+              <Badge tone={p.provider_protocol === 'openai' ? 'info' : 'default'} className="!text-[10px] !px-1.5 !py-0">
+                {p.provider_protocol === 'openai' ? 'OpenAI' : 'Anthropic'}
+              </Badge>
+              <span className="truncate">{p.model || provider?.default_model || '默认模型'}</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* 密钥信息 */}
+      <div className="flex items-center gap-1.5 text-xs text-[color:var(--text-faint)]">
+        <ShieldCheck size={11} />
+        <span>{p.auth_token_mask || '未设置密钥'}</span>
+      </div>
+
+      {/* 操作栏 */}
+      <div className="flex items-center gap-1.5 pt-0.5 border-t border-[color:var(--line)]/50">
+        {!p.is_active && (
+          <Button size="sm" variant="soft" onClick={onActivate} className="text-xs">
+            <Zap size={12} /> 激活
+          </Button>
+        )}
+        <Button size="sm" variant="ghost" onClick={onTest} className="text-xs gap-1">
+          {testIcon ? (
+            <span className={cn(
+              testState === 'testing' && 'animate-spin',
+              testState === 'success' && 'text-emerald-500',
+              testState === 'fail' && 'text-red-500',
+            )}>
+              {testState === 'testing' && <Loader2 size={12} />}
+              {testState === 'success' && <CheckCircle2 size={12} />}
+              {testState === 'fail' && <AlertCircle size={12} />}
+            </span>
+          ) : null}
+          {testState === 'testing' ? '测试中…' : testState === 'success' ? '连接成功' : testState === 'fail' ? '连接失败' : '测试连接'}
+        </Button>
+        <div className="flex-1" />
+        <Button size="sm" variant="ghost" onClick={onEdit} className="opacity-0 group-hover:opacity-100 transition-opacity">
+          <Pencil size={13} />
+        </Button>
+        <Button size="sm" variant="ghost" onClick={onDelete} className="opacity-0 group-hover:opacity-100 transition-opacity text-red-500/70 hover:text-red-500">
+          <Trash2 size={13} />
+        </Button>
+      </div>
+    </Card>
+  );
+}
+
+// ─── 供应商选择网格 ──────────────────────────────────────────────
+function ProviderGrid({ providers, selectedId, onSelect }) {
+  const [search, setSearch] = useState('');
+
+  const filtered = useMemo(() => {
+    if (!search.trim()) return providers;
+    const q = search.toLowerCase();
+    return providers.filter((p) =>
+      p.name.toLowerCase().includes(q) || p.code.toLowerCase().includes(q) ||
+      (getProviderTheme(p.code).label || '').toLowerCase().includes(q)
+    );
+  }, [providers, search]);
+
+  const anthropicProviders = filtered.filter((p) => p.protocol === 'anthropic');
+  const openaiProviders = filtered.filter((p) => p.protocol === 'openai');
+
+  return (
+    <div className="space-y-4">
+      <div className="relative">
+        <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-[color:var(--text-faint)]" />
+        <Input
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          placeholder="搜索供应商…"
+          className="pl-9"
+          autoFocus
+        />
+      </div>
+
+      {anthropicProviders.length > 0 && (
+        <ProviderSection title="Anthropic 协议（直连）" providers={anthropicProviders} selectedId={selectedId} onSelect={onSelect} />
+      )}
+      {openaiProviders.length > 0 && (
+        <ProviderSection title="OpenAI 兼容协议（经本地路由层翻译）" providers={openaiProviders} selectedId={selectedId} onSelect={onSelect} />
+      )}
+
+      {filtered.length === 0 && (
+        <div className="text-center py-8 text-sm text-[color:var(--text-faint)]">
+          未找到匹配的供应商
+        </div>
+      )}
+    </div>
+  );
+}
+
+function ProviderSection({ title, providers, selectedId, onSelect }) {
+  return (
+    <div>
+      <div className="text-xs font-medium text-[color:var(--text-faint)] mb-2 uppercase tracking-wider">{title}</div>
+      <div className="grid grid-cols-3 gap-2">
+        {providers.map((p) => {
+          const theme = getProviderTheme(p.code);
+          const Icon = theme.icon;
+          const selected = selectedId === p.id;
+          return (
+            <button
+              key={p.id}
+              onClick={() => onSelect(p)}
+              className={cn(
+                'surface p-3 text-left transition-all duration-200 hover:-translate-y-0.5 cursor-pointer',
+                selected
+                  ? 'ring-2 ring-[color:var(--accent)] border-[color:var(--accent)] shadow-glow'
+                  : 'hover:border-[color:var(--accent)]/50 hover:shadow-md'
+              )}
+            >
+              <div className={cn('w-9 h-9 rounded-lg flex items-center justify-center bg-gradient-to-br text-white mb-2', theme.gradient)}>
+                <Icon size={16} />
+              </div>
+              <div className="text-sm font-medium truncate">{theme.label || p.name}</div>
+              <div className="text-[11px] text-[color:var(--text-faint)] truncate mt-0.5">
+                {p.default_model || '—'}
+              </div>
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+// ─── 两步式编辑器弹窗 ────────────────────────────────────────────
 function ProfileEditor({ providers, profile, onClose, onSaved }) {
   const isEdit = !!profile;
+  const [step, setStep] = useState(isEdit ? 2 : 1);
+  const [selectedProvider, setSelectedProvider] = useState(
+    isEdit ? providers.find((p) => p.id === profile.provider_id) : null
+  );
   const [name, setName] = useState(profile?.name || '');
-  const [providerId, setProviderId] = useState(profile?.provider_id || providers[0]?.id || 0);
   const [baseUrl, setBaseUrl] = useState(profile?.base_url || '');
   const [model, setModel] = useState(profile?.model || '');
   const [token, setToken] = useState('');
   const [transformer, setTransformer] = useState(profile?.transformer || '');
-  const [showAdvanced, setShowAdvanced] = useState(!!profile?.transformer);
+  const [showAdvanced, setShowAdvanced] = useState(false);
   const [showToken, setShowToken] = useState(false);
   const [saving, setSaving] = useState(false);
   const pushNotification = useStore((s) => s.pushNotification);
 
-  const provider = providers.find((p) => p.id === providerId);
-  const isOpenAI = provider?.protocol === 'openai';
+  const isOpenAI = selectedProvider?.protocol === 'openai';
 
-  // 选 provider 时自动填默认值（包括 transformer 推断）
-  const onPickProvider = (id) => {
-    setProviderId(id);
-    const p = providers.find((x) => x.id === id);
-    if (p) {
-      if (!baseUrl) setBaseUrl(p.default_base_url || '');
-      if (!model) setModel(p.default_model || '');
-      if (!name) setName(p.name);
-      // 从 provider.usage_api_meta 中读取建议 transformer
+  const handlePickProvider = (p) => {
+    setSelectedProvider(p);
+    if (!isEdit) {
+      setName(p.name);
+      setBaseUrl(p.default_base_url || '');
+      setModel(p.default_model || '');
       try {
         const meta = JSON.parse(p.usage_api_meta || '{}');
-        if (meta.transformer && !transformer) setTransformer(meta.transformer);
+        if (meta.transformer) setTransformer(meta.transformer);
       } catch {}
     }
+    setStep(2);
   };
 
   const handleSave = async () => {
     if (!name.trim()) return pushNotification({ title: '请填写名称', body: '' });
-    if (!providerId) return pushNotification({ title: '请选择供应商', body: '' });
+    if (!selectedProvider) return pushNotification({ title: '请选择供应商', body: '' });
+    if (!isEdit && !token.trim()) return pushNotification({ title: '请填写密钥', body: '' });
     setSaving(true);
     try {
       let cipher = '';
@@ -160,7 +350,8 @@ function ProfileEditor({ providers, profile, onClose, onSaved }) {
       }
       await api.saveProfile({
         id: profile?.id || 0,
-        name, provider_id: providerId,
+        name,
+        provider_id: selectedProvider.id,
         base_url: baseUrl,
         model,
         auth_token_cipher: cipher,
@@ -168,7 +359,6 @@ function ProfileEditor({ providers, profile, onClose, onSaved }) {
         extra: '{}',
         transformer: isOpenAI ? transformer : '',
       });
-      // 若是当前激活档案且改了密钥，让 Electron 重推
       if (profile?.is_active && token) {
         await electron.pushActiveSecret(profile.id);
       }
@@ -181,114 +371,142 @@ function ProfileEditor({ providers, profile, onClose, onSaved }) {
     }
   };
 
+  const theme = selectedProvider ? getProviderTheme(selectedProvider.code) : null;
+
+  // 第一步：选择供应商
+  if (step === 1) {
+    return (
+      <Modal open onClose={onClose} title="选择供应商" width={680}>
+        <ProviderGrid
+          providers={providers}
+          selectedId={selectedProvider?.id}
+          onSelect={handlePickProvider}
+        />
+      </Modal>
+    );
+  }
+
+  // 第二步：填写配置
+  const SelIcon = theme?.icon || Cpu;
   return (
     <Modal
       open
       onClose={onClose}
-      title={isEdit ? '编辑接入点' : '新建接入点'}
-      width={560}
+      title={isEdit ? '编辑接入点' : '配置接入点'}
+      width={520}
       footer={
         <>
+          {!isEdit && (
+            <Button variant="ghost" onClick={() => setStep(1)} className="mr-auto">
+              <ArrowLeft size={14} /> 重选供应商
+            </Button>
+          )}
           <Button variant="ghost" onClick={onClose}>取消</Button>
           <Button onClick={handleSave} disabled={saving}>
             {saving ? <Loader2 size={14} className="animate-spin" /> : null}
-            保存
+            {isEdit ? '保存' : '添加'}
           </Button>
         </>
       }
     >
-      <div className="space-y-4">
-        <Field label="名称">
-          <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="例如：My DeepSeek Profile" />
-        </Field>
-        <Field label="供应商">
-          <Select value={providerId} onChange={(e) => onPickProvider(Number(e.target.value))}>
-            {providers.map((p) => (
-              <option key={p.id} value={p.id}>
-                {p.name} {p.protocol === 'openai' ? '· OpenAI' : '· Anthropic'}
-              </option>
-            ))}
-          </Select>
-          {provider?.doc_url && (
+      <div className="space-y-5">
+        {/* 当前供应商摘要 */}
+        <div className="flex items-center gap-3 p-3 rounded-xl bg-[color:var(--bg-soft)] border border-[color:var(--line)]">
+          <div className={cn('w-10 h-10 rounded-lg flex items-center justify-center bg-gradient-to-br text-white', theme?.gradient)}>
+            <SelIcon size={18} />
+          </div>
+          <div className="min-w-0">
+            <div className="font-medium text-sm">{selectedProvider?.name}</div>
+            <div className="text-xs text-[color:var(--text-faint)] flex items-center gap-1.5">
+              <Badge tone={isOpenAI ? 'info' : 'default'} className="!text-[10px] !px-1.5 !py-0">
+                {isOpenAI ? 'OpenAI 兼容' : 'Anthropic'}
+              </Badge>
+              {selectedProvider?.default_model && (
+                <span className="truncate">{selectedProvider.default_model}</span>
+              )}
+            </div>
+          </div>
+          {!isEdit && (
             <button
-              onClick={() => electron.openExternal(provider.doc_url)}
-              className="mt-1 inline-flex items-center gap-1 text-xs text-[color:var(--accent)] hover:underline"
+              onClick={() => setStep(1)}
+              className="ml-auto text-xs text-[color:var(--accent)] hover:underline shrink-0"
             >
-              <ExternalLink size={11} /> 如何获取密钥
+              更换
             </button>
           )}
-        </Field>
-        {isOpenAI && (
-          <div className="rounded-lg border border-[color:var(--line)] bg-[color:var(--bg-soft)] p-3 text-xs text-[color:var(--text-soft)] leading-relaxed">
-            该供应商为 <b>OpenAI 兼容协议</b>。激活后，本应用将自动启动本地路由层（基于
-            llm-bridge）把 Anthropic 请求实时翻译为 OpenAI 格式后转发至 {provider?.name}，
-            整个流程发生在你的电脑上，不经过任何中间服务器。
-          </div>
-        )}
-        <Field label="Base URL">
-          <Input value={baseUrl} onChange={(e) => setBaseUrl(e.target.value)} placeholder={provider?.default_base_url || 'https://...'} />
-          {isOpenAI && (
-            <div className="mt-1 text-[11px] text-[color:var(--text-faint)]">
-              OpenAI 协议端点应包含 <code>/chat/completions</code> 路径
-            </div>
-          )}
-        </Field>
-        <Field label="模型">
-          <Input value={model} onChange={(e) => setModel(e.target.value)} placeholder={provider?.default_model || ''} />
-        </Field>
-        <Field label={isEdit ? '密钥（留空则保留旧值）' : 'API Key / AKSK Token'}>
+        </div>
+
+        {/* 密钥 - 最突出的输入 */}
+        <Field label={isEdit ? '密钥（留空则保留旧值）' : 'API Key'}>
           <div className="relative">
             <Input
               type={showToken ? 'text' : 'password'}
               value={token}
               onChange={(e) => setToken(e.target.value)}
-              placeholder={isEdit ? '••••••••' : 'sk-...'}
+              placeholder={isEdit ? '••••••••（不修改请留空）' : 'sk-...'}
               autoComplete="off"
-              className="pr-9"
+              className="pr-9 h-11 text-base"
+              autoFocus={!isEdit}
             />
             <button
               type="button"
               onClick={() => setShowToken((v) => !v)}
-              className="absolute right-2 top-1/2 -translate-y-1/2 w-7 h-7 inline-flex items-center justify-center rounded-md text-[color:var(--text-faint)] hover:bg-[color:var(--bg-soft)] hover:text-[color:var(--text)]"
-              title={showToken ? '隐藏密钥' : '显示密钥'}
+              className="absolute right-2.5 top-1/2 -translate-y-1/2 w-7 h-7 inline-flex items-center justify-center rounded-md text-[color:var(--text-faint)] hover:bg-[color:var(--bg-soft)] hover:text-[color:var(--text)]"
             >
               {showToken ? <EyeOff size={14} /> : <Eye size={14} />}
             </button>
           </div>
-          <div className="mt-1 text-[11px] text-[color:var(--text-faint)] flex items-center gap-1">
-            <ShieldCheck size={12} /> 通过系统 Keychain 加密存储，仅本机可解
-          </div>
-        </Field>
-        {isOpenAI && (
-          <div>
-            <button
-              type="button"
-              onClick={() => setShowAdvanced((v) => !v)}
-              className="text-xs text-[color:var(--accent)] hover:underline"
-            >
-              {showAdvanced ? '收起' : '展开'} 高级选项
-            </button>
-            {showAdvanced && (
-              <div className="mt-2">
-                <Field label="Transformer">
-                  <Input
-                    value={transformer}
-                    onChange={(e) => setTransformer(e.target.value)}
-                    placeholder="留空 = 自动；保留字段，未来用于 per-provider 偏差修正"
-                  />
-                  <div className="mt-1 text-[11px] text-[color:var(--text-faint)]">
-                    保留配置项；当前路由层（llm-bridge）会自动处理多数协议差异，留空即可。
-                  </div>
-                </Field>
-              </div>
+          <div className="mt-1.5 flex items-center justify-between">
+            <div className="text-[11px] text-[color:var(--text-faint)] flex items-center gap-1">
+              <ShieldCheck size={11} /> Keychain 加密存储
+            </div>
+            {selectedProvider?.doc_url && (
+              <button
+                onClick={() => electron.openExternal(selectedProvider.doc_url)}
+                className="inline-flex items-center gap-1 text-[11px] text-[color:var(--accent)] hover:underline"
+              >
+                <ExternalLink size={10} /> 获取密钥
+              </button>
             )}
           </div>
-        )}
+        </Field>
+
+        {/* 高级设置折叠区 */}
+        <div>
+          <button
+            type="button"
+            onClick={() => setShowAdvanced((v) => !v)}
+            className="flex items-center gap-1 text-xs text-[color:var(--text-soft)] hover:text-[color:var(--text)] transition-colors"
+          >
+            {showAdvanced ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+            高级设置
+            <span className="text-[color:var(--text-faint)]">（名称、模型、URL）</span>
+          </button>
+          {showAdvanced && (
+            <div className="mt-3 space-y-3 pl-0.5">
+              <Field label="名称">
+                <Input value={name} onChange={(e) => setName(e.target.value)} placeholder={selectedProvider?.name || ''} />
+              </Field>
+              <Field label="模型">
+                <Input value={model} onChange={(e) => setModel(e.target.value)} placeholder={selectedProvider?.default_model || ''} />
+              </Field>
+              <Field label="Base URL">
+                <Input value={baseUrl} onChange={(e) => setBaseUrl(e.target.value)} placeholder={selectedProvider?.default_base_url || 'https://...'} />
+              </Field>
+              {isOpenAI && (
+                <Field label="Transformer">
+                  <Input value={transformer} onChange={(e) => setTransformer(e.target.value)} placeholder="留空 = 自动" />
+                </Field>
+              )}
+            </div>
+          )}
+        </div>
       </div>
     </Modal>
   );
 }
 
+// ─── 工具组件 ────────────────────────────────────────────────────
 function Field({ label, children }) {
   return (
     <label className="block">

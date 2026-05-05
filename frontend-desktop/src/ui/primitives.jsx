@@ -85,20 +85,22 @@ export function Badge({ className, tone = 'default', children }) {
   );
 }
 
-export const Card = forwardRef(function Card({ className, children }, ref) {
-  return <div ref={ref} className={cn('surface p-4 shadow-[0_1px_2px_rgba(0,0,0,.03),0_8px_24px_-4px_rgba(0,0,0,.06)]', className)}>{children}</div>;
+export const Card = forwardRef(function Card({ className, children, ...props }, ref) {
+  return <div ref={ref} className={cn('surface p-4 shadow-[0_1px_2px_rgba(0,0,0,.03),0_8px_24px_-4px_rgba(0,0,0,.06)]', className)} {...props}>{children}</div>;
 });
 
 // Modal/Dialog 简单实现
 export function Modal({ open, onClose, title, footer, children, width = 520 }) {
   const dialogRef = useRef(null);
   const titleId = useId();
+  const onCloseRef = useRef(onClose);
+  onCloseRef.current = onClose;
 
   useEffect(() => {
     if (!open) return;
     const previouslyFocused = document.activeElement;
     const onKeyDown = (e) => {
-      if (e.key === 'Escape') onClose?.();
+      if (e.key === 'Escape') onCloseRef.current?.();
     };
     document.addEventListener('keydown', onKeyDown);
     requestAnimationFrame(() => {
@@ -109,7 +111,7 @@ export function Modal({ open, onClose, title, footer, children, width = 520 }) {
       document.removeEventListener('keydown', onKeyDown);
       previouslyFocused?.focus?.();
     };
-  }, [onClose, open]);
+  }, [open]);
 
   if (!open) return null;
   return (

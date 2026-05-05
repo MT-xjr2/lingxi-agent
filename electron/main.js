@@ -1,8 +1,9 @@
-const { app, BrowserWindow, ipcMain, shell, safeStorage, Menu } = require('electron');
+const { app, BrowserWindow, ipcMain, shell, safeStorage, Menu, desktopCapturer, globalShortcut, nativeImage, dialog } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const { spawn } = require('child_process');
 const http = require('http');
+const { autoUpdater } = require('electron-updater');
 
 // ─── 配置 ────────────────────────────────────────────────────────
 const BACKEND_PORT = 3001;
@@ -118,6 +119,28 @@ function getUploadsPath() {
 // skills 目录：隔离 HOME/.claude/skills（与 initClaudeConfig 同步的位置一致）
 function getSkillsPath() {
   return path.join(getAppHome(), '.claude', 'skills');
+}
+
+// whisper.cpp 离线语音识别二进制 + 模型
+function getWhisperBin() {
+  const resourcesDir = app.isPackaged
+    ? process.resourcesPath
+    : path.join(__dirname, 'resources');
+  const bin = path.join(resourcesDir, 'whisper', 'whisper-cli');
+  if (fs.existsSync(bin)) {
+    try { fs.chmodSync(bin, 0o755); } catch (e) {}
+    return bin;
+  }
+  return '';
+}
+
+function getWhisperModel() {
+  const resourcesDir = app.isPackaged
+    ? process.resourcesPath
+    : path.join(__dirname, 'resources');
+  const model = path.join(resourcesDir, 'whisper', 'ggml-base.bin');
+  if (fs.existsSync(model)) return model;
+  return '';
 }
 
 // ─── 初始化 claude-code 隔离配置 ────────────────────────────────
@@ -330,6 +353,9 @@ function startBackend() {
       KB_PATH: kbPath,
       SKILLS_PATH: skillsPath,
       UPLOADS_PATH: uploadsPath,
+      // whisper.cpp 离线语音识别
+      WHISPER_BIN: getWhisperBin(),
+      WHISPER_MODEL: getWhisperModel(),
       // 认证信息（从 settings.json 读取，注入给 Go 后端，再透传给 AI 引擎）
       ...authEnv,
     },
@@ -462,7 +488,8 @@ function createWindow() {
     show: false,
   });
 
-  mainWindow.loadURL(`http://localhost:${BACKEND_PORT}`);
+  // 立即加载 splash 页面，后端就绪后再切换到主应用
+  mainWindow.loadFile(path.join(__dirname, 'splash.html'));
 
   mainWindow.once('ready-to-show', () => {
     mainWindow.show();
@@ -471,6 +498,12 @@ function createWindow() {
   mainWindow.on('closed', () => {
     mainWindow = null;
   });
+}
+
+function switchToApp() {
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.loadURL(`http://localhost:${BACKEND_PORT}`);
+  }
 }
 
 // ─── safeStorage 工具：AKSK 加解密 ───────────────────────────────
@@ -569,6 +602,16 @@ ipcMain.handle('get-version', () => {
   return app.getVersion();
 });
 
+ipcMain.handle('check-for-update', async () => {
+  if (!app.isPackaged) return { status: 'dev' };
+  try {
+    const result = await autoUpdater.checkForUpdates();
+    return { status: 'ok', version: result?.updateInfo?.version };
+  } catch (err) {
+    return { status: 'error', error: err.message };
+  }
+});
+
 ipcMain.handle('encrypt-secret', (_e, plain) => encryptSecretBase64(plain));
 ipcMain.handle('decrypt-secret', (_e, cipher) => decryptSecretBase64(cipher));
 ipcMain.handle('is-encryption-available', () => {
@@ -579,28 +622,188 @@ ipcMain.handle('push-active-secret', async (_e, profileId) => {
   return { ok: true };
 });
 
+// ─── 屏幕截图 (desktopCapturer) ──────────────────────────────────
+ipcMain.handle('capture-screen', async () => {
+  const sources = await desktopCapturer.getSources({
+    types: ['screen'],
+    thumbnailSize: { width: 1920, height: 1080 },
+  });
+  if (!sources.length) throw new Error('无法获取屏幕源');
+  const img = sources[0].thumbnail;
+  const png = img.toPNG();
+  return { data: png.toString('base64'), mediaType: 'image/png' };
+});
+
+// ─── 桌面通知 ─────────────────────────────────────────────────────
+const { Notification: ElectronNotification } = require('electron');
+ipcMain.handle('show-notification', (_e, title, body) => {
+  if (ElectronNotification.isSupported()) {
+    const n = new ElectronNotification({ title: title || '灵犀', body: body || '' });
+    n.show();
+  }
+});
+
 // ─── 应用生命周期 ────────────────────────────────────────────────
+// ─── 自动更新 ────────────────────────────────────────────────────
+function setupAutoUpdater() {
+  if (!app.isPackaged) {
+    console.log('[updater] skipping auto-update in dev mode');
+    return;
+  }
+
+  autoUpdater.autoDownload = false;
+  autoUpdater.autoInstallOnAppQuit = true;
+  autoUpdater.logger = {
+    info: (m) => console.log('[updater]', m),
+    warn: (m) => console.warn('[updater]', m),
+    error: (m) => console.error('[updater]', m),
+  };
+
+  autoUpdater.on('checking-for-update', () => {
+    console.log('[updater] checking for update...');
+    if (mainWindow) {
+      mainWindow.webContents.send('update-status', { status: 'checking' });
+    }
+  });
+
+  autoUpdater.on('update-available', (info) => {
+    console.log('[updater] update available:', info.version);
+    if (mainWindow) {
+      mainWindow.webContents.send('update-status', {
+        status: 'available',
+        version: info.version,
+        releaseNotes: info.releaseNotes,
+        releaseDate: info.releaseDate,
+      });
+    }
+    dialog.showMessageBox(mainWindow, {
+      type: 'info',
+      title: '发现新版本',
+      message: `灵犀 ${info.version} 可用`,
+      detail: '是否立即下载更新？',
+      buttons: ['立即下载', '稍后再说'],
+      defaultId: 0,
+    }).then(({ response }) => {
+      if (response === 0) {
+        autoUpdater.downloadUpdate();
+      }
+    });
+  });
+
+  autoUpdater.on('update-not-available', () => {
+    console.log('[updater] no update available');
+    if (mainWindow) {
+      mainWindow.webContents.send('update-status', { status: 'up-to-date' });
+    }
+  });
+
+  autoUpdater.on('download-progress', (progress) => {
+    console.log(`[updater] download: ${Math.round(progress.percent)}%`);
+    if (mainWindow) {
+      mainWindow.webContents.send('update-status', {
+        status: 'downloading',
+        percent: Math.round(progress.percent),
+        bytesPerSecond: progress.bytesPerSecond,
+        total: progress.total,
+        transferred: progress.transferred,
+      });
+    }
+  });
+
+  autoUpdater.on('update-downloaded', (info) => {
+    console.log('[updater] update downloaded:', info.version);
+    if (mainWindow) {
+      mainWindow.webContents.send('update-status', {
+        status: 'downloaded',
+        version: info.version,
+      });
+    }
+    dialog.showMessageBox(mainWindow, {
+      type: 'info',
+      title: '更新已就绪',
+      message: `灵犀 ${info.version} 已下载完成`,
+      detail: '重启应用以完成更新。',
+      buttons: ['立即重启', '稍后重启'],
+      defaultId: 0,
+    }).then(({ response }) => {
+      if (response === 0) {
+        autoUpdater.quitAndInstall(false, true);
+      }
+    });
+  });
+
+  autoUpdater.on('error', (err) => {
+    console.error('[updater] error:', err.message);
+    if (mainWindow) {
+      mainWindow.webContents.send('update-status', {
+        status: 'error',
+        error: err.message,
+      });
+    }
+  });
+
+  // 启动后延迟 10 秒检查更新，避免影响启动速度
+  setTimeout(() => {
+    autoUpdater.checkForUpdates().catch((err) => {
+      console.error('[updater] check failed:', err.message);
+    });
+  }, 10000);
+
+  // 每 4 小时检查一次更新
+  setInterval(() => {
+    autoUpdater.checkForUpdates().catch(() => {});
+  }, 4 * 60 * 60 * 1000);
+}
+
 app.whenReady().then(async () => {
+  buildAppMenu();
+
+  // 立即创建窗口并显示 splash 页，让用户第一时间看到内容
+  createWindow();
+
+  // 并行执行初始化（不阻塞窗口显示）
   try {
     initClaudeConfig();
   } catch (err) {
     console.error('[electron] initClaudeConfig error:', err);
   }
 
-  buildAppMenu();
-
   startBackend();
 
   try {
     await waitForBackend();
     console.log('[electron] backend is ready');
-    // 启动后下发激活档案明文 token 到后端进程内存（如果用户已配置）
     await pushActiveSecretToBackend();
+    // 后端就绪后切换到主应用
+    switchToApp();
+    // 启动自动更新检查
+    setupAutoUpdater();
   } catch (err) {
     console.error('[electron] backend failed to start:', err);
   }
 
-  createWindow();
+  // 注册全局截屏快捷键 Cmd+Shift+S → 截屏并推送到前端
+  try {
+    globalShortcut.register('CommandOrControl+Shift+S', async () => {
+      if (!mainWindow) return;
+      try {
+        const sources = await desktopCapturer.getSources({
+          types: ['screen'],
+          thumbnailSize: { width: 1920, height: 1080 },
+        });
+        if (!sources.length) return;
+        const png = sources[0].thumbnail.toPNG();
+        mainWindow.webContents.send('screenshot-captured', {
+          data: png.toString('base64'),
+          mediaType: 'image/png',
+        });
+      } catch (err) {
+        console.error('[electron] screenshot error:', err.message);
+      }
+    });
+  } catch (err) {
+    console.error('[electron] failed to register screenshot shortcut:', err.message);
+  }
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) {
@@ -614,6 +817,7 @@ app.on('window-all-closed', () => {
 });
 
 app.on('before-quit', () => {
+  globalShortcut.unregisterAll();
   if (backendProcess) {
     console.log('[electron] killing backend process...');
     backendProcess.kill('SIGTERM');

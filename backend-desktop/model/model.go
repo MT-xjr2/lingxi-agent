@@ -9,6 +9,8 @@ type Session struct {
 	MessageCount    int       `json:"message_count"`
 	AgentID         int64     `json:"agent_id"`
 	Pinned          bool      `json:"pinned"`
+	Summary         string    `json:"summary,omitempty"`
+	Folder          string    `json:"folder,omitempty"`
 	CreatedAt       time.Time `json:"created_at"`
 	UpdatedAt       time.Time `json:"updated_at"`
 }
@@ -20,6 +22,7 @@ type Message struct {
 	Content   string    `json:"content"`
 	Usage     string    `json:"usage,omitempty"`
 	Feedback  string    `json:"feedback,omitempty"`
+	Pinned    bool      `json:"pinned"`
 	CreatedAt time.Time `json:"created_at"`
 }
 
@@ -81,4 +84,12 @@ type ScheduledTaskRun struct {
 	Summary    string     `json:"summary"`
 	StartedAt  time.Time  `json:"started_at"`
 	FinishedAt *time.Time `json:"finished_at"`
+}
+
+type Memory struct {
+	ID        int64     `json:"id"`
+	AgentID   int64     `json:"agent_id"`
+	Content   string    `json:"content"`
+	Category  string    `json:"category"`
+	CreatedAt time.Time `json:"created_at"`
 }
