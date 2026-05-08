@@ -1,0 +1,442 @@
+---
+description: 灵犀 AI Agent 项目开发规范，适用于所有文件修改
+globs:
+alwaysApply: true
+---
+
+# 灵犀 AI Agent — Cursor 开发规范
+
+## 项目概述
+
+灵犀 AI Agent 是一个本地优先的桌面 AI Agent 工作台。架构为 **Electron (桌面壳) + React (前端) + Go (后端)**，通过本地 AI 引擎与多模型接入层连接不同模型供应商。
+
+## 关键规则
+
+### 1. 子代理限制
+
+**禁止在开发任务中开启子代理（subagent）。** 所有分析、编码、调试、打包任务必须在当前会话中直接完成。
+
+### 2. 信令服务器代码推送规则
+
+**凡对 `signaling-server/` 目录有代码变更，完成后必须 push 到独立仓库：**
+```bash
+# 克隆独立仓库
+git clone git@github.com:OdysseyFather/lingxi-singaling-server.git /tmp/lingxi-singaling-server
+# 复制变更文件
+cp signaling-server/main.go signaling-server/go.mod signaling-server/go.sum /tmp/lingxi-singaling-server/
+# 提交并推送
+cd /tmp/lingxi-singaling-server && git add -A && git commit -m "描述变更" && git push origin main
+```
+Render 部署（wss://lingxi-singaling-server.onrender.com）会自动拉取最新代码重新部署。
+
+### 3. 开发完成后的强制流程
+
+每次需求开发完成后，必须按顺序执行以下步骤：
+
+1. **打包**
+   ```bash
+   # 构建（需确保 Node.js >= 20.19 或 >= 22.12）
+   export PATH="/tmp/node22/bin:$PATH"  # 如系统 node 版本不够
+   cd <project-root> && ./build-desktop.sh
+   ```
+   构建产物在 `dist-electron/` 目录，手动分发安装包。
+
+2. **更新项目文档**
+   - 更新 `.cursor/rules/lingxi-agent.mdc`（如有架构/规范变更）
+   - 更新 `CLAUDE.md`（如有新增模块、技术栈变更、开发流程变更）
+   - 更新 `README.md`（如有新增用户可见功能、快捷键、配置项等）
+
+---
+
+## 技术架构
+
+### 前端 (`frontend-desktop/`)
+
+| 技术 | 版本 | 用途 |
+|------|------|------|
+| React | 19 | UI 框架 |
+| Vite | 8 | 构建工具（**需 Node.js ≥ 20.19 或 ≥ 22.12**） |
+| Tailwind CSS | 3.4 | 样式系统 |
+| Zustand | 5 | 全局状态管理 |
+| Framer Motion | 12 | 动画库 |
+| Lucide React | 1.14 | 图标库 |
+| Recharts | 3 | 图表库 |
+| react-markdown + remark-gfm | — | Markdown 渲染 |
+| prism-react-renderer | 2 | 代码语法高亮 |
+| @tanstack/react-virtual | 3 | 虚拟滚动 |
+
+### 后端 (`backend-desktop/`)
+
+| 技术 | 版本 | 用途 |
+|------|------|------|
+| Go | 1.24 | 语言 |
+| Gin | 1.10 | HTTP 框架 |
+| Gorilla WebSocket | 1.5 | WebSocket |
+| ncruces/go-sqlite3 | 0.22 | SQLite 驱动（WASM 实现，无 CGO） |
+| ledongthuc/pdf | — | PDF 文本提取 |
+| nguyenthenguyen/docx | — | DOCX 文本提取 |
+
+### 桌面壳 (`electron/`)
+
+| 技术 | 版本 | 用途 |
+|------|------|------|
+| Electron | 36 | 桌面容器 |
+| electron-builder | 25 | 打包工具 |
+
+---
+
+## 前端代码规范
+
+### 组件体系
+
+- **原子组件**在 `src/ui/primitives.jsx`：Button、Input、Textarea、Select、Badge、Card、Modal、ToastStack、Tooltip
+- 所有新页面/组件必须使用 primitives 中的封装组件，不允许使用原生 HTML 元素 + 手写样式
+- 使用 `cn()` 工具函数（`src/ui/cn.js`）合并 className，基于 `clsx` + `tailwind-merge`
+
+### 样式规范
+
+- **只使用 Tailwind CSS + CSS 变量**，不使用独立 CSS 文件（`App.css` 为遗留文件）
+- 颜色使用 CSS 变量：`var(--bg)`, `var(--text)`, `var(--accent)`, `var(--line)` 等
+- Tailwind 中引用 CSS 变量使用 `[color:var(--xxx)]` 语法
+- 主题定义在 `src/index.css` 中，通过 `[data-theme="xxx"]` 选择器
+- 当前主题：`light`, `dark`, `midnight`, `cyber`, `aurora`, `cosmos`
+
+### 状态管理
+
+- 全局状态使用 `useStore`（Zustand），定义在 `src/state/useStore.js`
+- 页面级临时状态使用 `useState`
+- 不引入 Redux / Context 等其他状态方案
+
+### 动画
+
+- 使用 `framer-motion` 的 `motion.div`、`AnimatePresence` 实现进场/退场动画
+- 页面级切换在 `AppShell.jsx` 中通过 `AnimatePresence mode="wait"` 管理
+- 列表增删使用 `AnimatePresence` + `motion.div` + `layout` 属性
+- CSS 动画关键帧定义在 `src/index.css`（`shimmer`, `breathe`, `riseFade`, `pulseRing`, `rise`）
+
+### 图标
+
+- 统一使用 `lucide-react`，不使用 emoji 或其他图标库
+- 图标尺寸：小按钮 `size={14}`，标准 `size={16-18}`，页面标题 `size={24-26}`
+
+### 文件组织
+
+```
+src/
+├── main.jsx              # 入口
+├── index.css             # Tailwind 基础 + 主题 CSS 变量
+├── api/client.js         # API 请求封装
+├── state/useStore.js     # Zustand 全局状态
+├── ui/                   # 通用 UI 组件
+│   ├── AppShell.jsx      # 主布局壳（顶部导航：主导航5项 + 辅助导航5项，无代码空间）
+│   ├── primitives.jsx    # 原子组件
+│   ├── cn.js             # className 合并工具
+│   ├── SidebarSessions.jsx # 会话列表（置顶/重命名/批量删除）
+│   ├── ModelSwitcher.jsx
+│   ├── RouterPill.jsx
+│   └── ErrorBoundary.jsx
+├── chat/                 # 对话相关
+│   ├── ChatView.jsx      # 对话主视图
+│   ├── Composer.jsx      # 输入框（含斜杠命令）
+│   ├── MessageList.jsx   # 消息列表（含虚拟滚动）
+│   ├── Bubble.jsx        # 消息气泡
+│   ├── blocks.jsx        # 消息块渲染（文本/思考/工具）
+│   ├── blockUtils.js     # 工具函数
+│   ├── SearchModal.jsx   # 全文搜索弹窗
+│   ├── AgentPicker.jsx   # 智能体选择器
+│   └── AgentStatePill.jsx
+├── settings/             # 设置页
+│   ├── SettingsPage.jsx
+│   ├── ProfilesPage.jsx  # 接入点管理
+│   ├── AppearancePage.jsx # 主题设置
+│   ├── MemoryPage.jsx    # 长期记忆管理
+│   ├── NexusSettingsPage.jsx # 网络与协作设置
+│   └── UsagePage.jsx     # 用量统计 + 预算预警
+├── nexus/                # Agent 间对话（Project Nexus）
+│   ├── NexusPage.jsx     # 双栏通信界面（左侧对话列表 + 右侧发现/对话视图，无联系人）
+│   ├── A2AConversationView.jsx # Agent 对话观察视图（嵌入 NexusPage 右侧主区）
+│   ├── A2AMessageBubble.jsx    # 专用消息气泡
+│   └── StartA2AModal.jsx       # 发起对话弹窗
+├── LoginPage.jsx         # SSO 登录页（微信/QQ/Google/钉钉/抖音 + 游客）
+├── AgentFactoryPage.jsx  # 智能体工厂 + 模板市场
+├── WorkflowPage.jsx      # 可视化工作流编排（拖拽节点式编辑器）
+├── SkillsPage.jsx        # 技能管理
+├── KnowledgePage.jsx     # 知识库管理
+├── MCPPage.jsx           # MCP 管理
+├── IMConnectorPage.jsx   # IM 连接器管理
+└── ScheduledTasksPage.jsx # 定时任务管理
+```
+
+---
+
+## 后端代码规范
+
+### API 设计
+
+- RESTful 风格，路径前缀 `/api/`
+- WebSocket 路径 `/ws`
+- 使用 `gin.H{}` 返回 JSON
+- 错误统一返回 `{"error": "消息"}`
+
+### 数据库
+
+- SQLite 单文件，路径 `$HOME/Library/Application Support/灵犀/smart-agent.db`
+- 所有表定义和迁移在 `db/db.go` 的 `InitDB()` 中
+- 使用 `ncruces/go-sqlite3`（纯 Go WASM 实现，不需要 CGO）
+
+### 文件目录
+
+```
+backend-desktop/
+├── main.go              # 入口 + 路由注册
+├── config/config.go     # 配置
+├── db/
+│   ├── db.go            # 数据库初始化 + CRUD
+│   ├── nexus.go         # Nexus 表 CRUD（peers/contacts/a2a）
+│   └── mcp_agent.go     # MCP-Agent 关联
+├── handler/             # HTTP Handler
+│   ├── agent.go         # 智能体 CRUD
+│   ├── chat.go          # 对话 + 流式 WebSocket
+│   ├── knowledge.go     # 知识库（支持 PDF/DOCX）
+│   ├── mcp.go           # MCP 管理
+│   ├── provider.go      # 模型接入点管理
+│   ├── session.go       # 会话 + 消息搜索
+│   ├── skill.go         # 技能管理
+│   ├── usage.go         # 用量统计
+│   ├── im_connector.go  # IM 连接器
+│   ├── scheduled.go     # 定时任务 CRUD
+│   ├── auth.go          # SSO 登录（OAuth + 游客）
+│   ├── nexus.go         # Nexus 对外 API + 设置 + WAN 状态
+│   ├── a2a_conversation.go # A2A 对话管理（邀请/接受/拒绝/消息收发）
+│   ├── agent_nexus_config.go # Agent 对外设置 CRUD
+│   ├── router_status.go # 路由状态
+│   ├── tasks.go         # 后台任务管理
+│   ├── memory.go        # 长期记忆 CRUD + 消息固定
+│   ├── transcribe.go    # 语音识别（本地 whisper.cpp 优先，回退远端 API）
+│   └── ws_hub.go        # WebSocket Hub
+├── connector/           # IM 连接器实现
+├── model/model.go       # 数据模型
+├── nexus/               # Agent 间对话引擎（无 Token 认证，无联系人机制）
+│   ├── discovery.go     # mDNS 发现服务 + 广域网信令启动
+│   ├── conversation.go  # 对话执行引擎（第一人称自然对话提示词）
+│   ├── http_client.go   # HTTP 通信工具
+│   ├── transport.go     # Transport 接口（Send 无 token 参数）
+│   ├── lan_transport.go # 局域网 HTTP 直连传输
+│   ├── wan_transport.go # 广域网传输（信令中继）
+│   └── signaling.go     # 信令客户端（无 HMAC，支持 conversation_invite/accept/reject）
+├── router/              # AI 引擎路由
+├── scheduler/           # 定时任务调度器
+└── usage/               # 用量计算 + 定价
+```
+
+---
+
+## 构建 & 打包
+
+### 前置条件
+
+| 依赖 | 最低版本 | 说明 |
+|------|---------|------|
+| macOS | Apple Silicon arm64 | 打包目标 |
+| Node.js | 20.19 或 22.12 | Vite 8 要求 |
+| Go | 1.24 | 编译后端 |
+| Claude CLI | 最新 | 内置 AI 引擎 |
+
+### 构建命令
+
+```bash
+./build-desktop.sh
+```
+
+构建步骤：
+1. 自动递增 version（patch +1）
+2. `go build` 编译 Go 后端 → `smart-agent`（macOS arm64 + Windows amd64）
+3. `npm run build` 构建前端 → `dist/`
+4. 复制 AI 引擎（Claude CLI）到 `electron/resources/ai-engine/`
+5. 安装 Bridge 路由层（llm-bridge + litellm）
+6. 复制 Node.js 运行时到 `electron/resources/node-bin/`
+7. `electron-builder` 打包（macOS + Windows）
+
+### 产物
+
+```
+dist-electron/
+├── mac-arm64/灵犀.app              # 可直接运行
+├── 灵犀-{version}-arm64.dmg        # macOS 安装包
+├── 灵犀 Setup {version}.exe        # Windows 安装包
+└── 灵犀 {version}.exe              # Windows 便携版
+```
+
+如需手动管理版本号，直接编辑 `electron/package.json` 的 `version` 字段后再构建。
+
+---
+
+## Node.js 版本注意事项
+
+系统 Node.js 版本可能低于 Vite 8 所需的 20.19+。如遇版本不兼容：
+
+```bash
+# 方法：使用预下载的 Node 22
+curl -L "https://nodejs.org/dist/v22.15.0/node-v22.15.0-darwin-arm64.tar.gz" -o /tmp/node22.tar.gz
+mkdir -p /tmp/node22 && tar xzf /tmp/node22.tar.gz -C /tmp/node22 --strip-components=1
+export PATH="/tmp/node22/bin:$PATH"
+```
+
+---
+
+## npm 缓存权限问题
+
+如果遇到 `EACCES` 错误（npm 缓存被 root 占用）：
+
+```bash
+NPM_CONFIG_CACHE=/tmp/npm-lingxi-cache npm install [package] --force
+```
+
+---
+
+## 本地多实例测试（Agent Nexus）
+
+测试 Agent 间对话需要两个**完全独立的灵犀实例**（不同端口、不同数据库、不同 instance ID）。
+不能用 `open -n` 启动两个安装版，因为它们共享同一个数据库，instance ID 相同，mDNS/WAN 会互相过滤。
+
+### 一键启动 / 关闭
+
+```bash
+# 启动两个实例
+./scripts/start-test-instances.sh
+
+# 关闭所有实例
+./scripts/stop-test-instances.sh
+```
+
+### 实例说明
+
+| 实例 | 端口 | 数据库 | 访问方式 |
+|------|------|--------|----------|
+| 实例1（安装版） | 3001 | `~/Library/Application Support/lingxi-agent/smart-agent.db` | 灵犀桌面 App |
+| 实例2（开发版） | 3099 | `/tmp/lingxi-instance2/smart-agent.db` | 浏览器 `http://localhost:3099` |
+
+### 手动启动实例2（不用脚本）
+
+```bash
+mkdir -p /tmp/lingxi-instance2
+cd backend-desktop
+PORT=3099 DB_PATH=/tmp/lingxi-instance2/smart-agent.db FRONTEND_DIST=../frontend-desktop/dist go run .
+```
+
+启动后需在实例2的设置中配置模型接入点（API Profile），否则 Agent 无法生成回复。
+两个实例通过广域网信令服务器自动发现对方，无需手动配置。
+
+---
+
+## 已实现的功能清单
+
+### 前端 UI
+- [x] Tailwind + primitives 统一 UI 体系
+- [x] 6 套主题（light/dark/midnight/cyber/aurora/cosmos）
+- [x] AnimatePresence 页面切换动画
+- [x] 顶部导航栏（主导航 5 项：对话/智能体/技能/知识库/MCP + 辅助导航 5 项：Nexus/IM/工作流/定时/设置）
+- [x] 代码空间模块已移除（v1.0.13）
+- [x] 代码块语法高亮 + 复制按钮（prism-react-renderer）
+- [x] 消息复制按钮
+- [x] 虚拟滚动（100+ 条消息自动启用）
+- [x] 会话重命名（双击编辑）+ 会话置顶（Pin to top）
+- [x] 会话批量删除
+- [x] Modal 化删除确认
+- [x] 全文消息搜索（Cmd+K）
+- [x] 对话导出为 Markdown
+- [x] 斜杠命令快捷输入（/ 唤起）
+- [x] 智能体模板市场（4 类 17 个模板）
+- [x] 统一 Agent 模式（移除 Chat/Plan/Agent 切换）
+- [x] 交互式信息收集块（选择块 + 输入块）
+- [x] 对话头像（用户 + 智能体）
+- [x] 五步引导式智能体创建向导（身份/角色/能力/对外设置/预览）
+- [x] 图片粘贴（Cmd+V）+ 聊天中图片展示
+- [x] 定时任务管理页面（创建/编辑/删除/开关/执行记录）
+- [x] 交互式向导流（多选择题逐一展示 + 前后翻页 + 汇总确认）
+- [x] 两阶段规划模式（用户选择是否进入 → 沉浸式多维度选择面板 → 确认后执行）
+- [x] UI 精致化（气泡微交互/超薄滚动条/波浪连接动画/增强空状态）
+- [x] 消息编辑/重发（hover 编辑按钮 + textarea 内联编辑 + 保存并重发）
+- [x] 消息反馈（thumbs up/down，持久化到 SQLite，选中高亮）
+- [x] 知识库检索可视化（RAG Citation：内联 [N] 上角标 + hover 弹出引用卡片 + 底部引用列表）
+- [x] 语音输入（MediaRecorder 录音 + 后端 OpenAI 兼容 Whisper API 识别，点击录音 → 停止 → 转录 → 文字填入输入框）
+- [x] TTS 朗读（Web Speech API，AssistantBubble 朗读/停止按钮）
+- [x] 文件拖拽对话（拖入文本/代码文件，内容作为附件发送）
+- [x] 快捷截屏（Cmd+Shift+S 全局快捷键 + 按钮截屏，图片填入输入框）
+- [x] 消息固定（Pin 按钮，用户/助理消息均支持）
+- [x] 快捷回复建议（assistant 回复后推荐 2-3 个后续问题胶囊按钮）
+- [x] 长期记忆管理 UI（设置 > 长期记忆：查看/添加/删除/分类/清空）
+- [x] 可视化工作流编排（WorkflowPage：拖拽节点式编辑器，支持提示词/条件/循环/延迟/代码/输出 6 种节点）
+- [x] 对话中止按钮（abort 正在进行的 AI 回复）
+- [x] SSO 登录页（微信/QQ/Google/钉钉/抖音 + 游客登录，Electron Loopback OAuth）
+- [x] 登录状态管理（useStore authChecked/currentUser + AppShell 登录判断）
+- [x] 广域网设置 UI（NexusSettingsPage：启用 WAN/信令服务器地址/签名密钥）
+
+### 后端
+- [x] 知识库支持 PDF/DOCX 格式
+- [x] 消息全文搜索 API
+- [x] 预算预警功能
+- [x] 费用估算兜底（非官方 API 用本地定价表估算）
+- [x] 技能在线编辑/导出 API
+- [x] Smithery.ai 市场代理 API（搜索/分类/详情/安装）
+- [x] 智能体 temperature / max_tokens 参数
+- [x] OpenAI reasoning token 透传（bridge 层拦截并生成 Anthropic thinking 事件）
+- [x] 定时任务调度器（scheduled_tasks + scheduled_task_runs 表，15 秒检查间隔，Go 侧时间比较）
+- [x] 定时任务 CRUD + 手动触发 + 桌面通知（WS desktop_notify 事件）
+- [x] 防死循环保护（禁止 Cursor 专有工具 + isNonExistentTool 检测）
+- [x] OpenAI 兼容模型技能识别增强（buildSkillInventory 注入已安装技能清单）
+- [x] 消息编辑接口（PUT /api/messages/:id + 删除后续消息）
+- [x] 消息反馈接口（POST /api/messages/:id/feedback，feedback 列迁移）
+- [x] 知识库引用标注指令（system prompt 追加 KB_CITATIONS 格式指令）
+- [x] 跨会话长期记忆（memories 表 CRUD + 按智能体隔离）
+- [x] 消息固定接口（POST /api/messages/:id/pin，pinned 列迁移）
+- [x] 语音识别（POST /api/transcribe → 本地 whisper.cpp 离线识别，回退远端 API）
+- [x] Electron desktopCapturer 截屏（capture-screen IPC handler + 全局快捷键推送）
+- [x] 会话文件夹数据模型（sessions.folder 列 + UpdateSession 支持 folder）
+- [x] 会话置顶（sessions.pinned 列 + UpdateSession 支持 pinned）
+- [x] 会话批量删除（POST /api/sessions/batch-delete）
+- [x] 技能批量上传（POST /api/skills/batch-upload）
+- [x] 对话中止（POST /api/chat/abort）
+- [x] 对话批量发送（POST /api/chat/batch）
+- [x] 挂起任务查询与清除（GET/DELETE /api/sessions/:id/pending）
+- [x] 智能体工作流数据模型（agents.post_actions 列）
+- [x] 运行时密钥注入（POST /api/runtime/active-secret）
+- [x] SSO 登录后端（users 表 + OAuth code 换 token + 游客登录）
+- [x] OAuth 配置管理（oauth_configs 表，支持微信/QQ/Google/钉钉/抖音）
+- [x] 广域网信令客户端（WebSocket + HMAC 签名 + WSS 支持）
+- [x] Transport 抽象层（LANTransport + WANTransport + 信令中继）
+- [x] 广域网 API（GET /api/wan/peers, GET /api/wan/status）
+
+### Agent 间对话（Project Nexus）
+- [x] 局域网 mDNS 自动发现（_lingxi._tcp 服务广播 + 10s 扫描）
+- [x] 无需建联/无 Token 认证：直接从发现的 peer 发起对话邀请
+- [x] 对话邀请流程（conversation_invite → accept/reject → 生成共享 conv_uuid）
+- [x] 一对一 Agent 自动对话引擎（第一人称自然对话，无客套寒暄）
+- [x] 流式实时对话（每端映射独立 Claude 会话，token 级流式 WS 推送）
+- [x] 双向流式对话（跨实例 stream-token 转发，双方均可实时看到对方 Agent 思考和输出）
+- [x] 持久会话（local_session_id 关联 sessions 表，跨轮次保持上下文）
+- [x] 统一 Bubble 渲染（A2AAgentBubble 组件 + BlocksRenderer，完整 Markdown/代码高亮/思考块/工具块）
+- [x] 己方/对方 Agent 视觉区分（不同颜色头像+标签+边框，紫色=对方，主题色=己方）
+- [x] 发起方和接收方均可实时观察 Agent 流式输出
+- [x] 智能滚动（stick-to-bottom：用户上滚不强制拉回）
+- [x] 人类介入（暂停/接管/终止/handoff 自动暂停通知）
+- [x] 对话摘要自动生成 + 审批流程
+- [x] 接收方完整邀请流程（主题/目标展示 + Agent 选择器 + 接受/拒绝）
+- [x] Agent 对外设置（公开/能力标签/授权级别/禁止透露/知识库限定）
+- [x] 双栏通信界面 NexusPage（Telegram/Discord 风格：左侧边栏联系人+对话列表，右侧发现面板/对话视图/联系人详情）
+- [x] Zustand nexus 状态切片（含 A2A 流式状态路由）+ api/client.js 调用方法
+- [x] 广域网 P2P 通信（信令服务器 + Transport 抽象 + WAN 建联）
+- [x] 发现面板（合并 LAN + WAN 节点统一列表，内联建联按钮）
+- [x] 信令通信安全加固（WSS/TLS + HMAC 消息签名 + 防重放）
+- [x] 广域网开箱即用（默认连接公共信令服务器，无需手动配置）
+- [x] A2A 对话持久化（离开页面重进自动恢复，定时轮询补充缺失消息）
+- [x] A2A 对话自动结束（[CLOSE] 标记检测 → 自动 terminate + 通知对方，避免无限寒暄循环）
+- [x] A2A 严格轮次对话（stream_done 同步发送 + 500ms 缓冲延迟 + 前端兜底清除远端流式状态，确保一来一回不抢话）
+
+### 平台
+- [x] IM 集成（企业微信/钉钉/飞书）
+- [x] MCP 工具管理
+- [x] 技能管理（AI 生成/ZIP 导入/批量上传/在线编辑/导出/市场安装）
+- [x] Windows 构建支持（NSIS + Portable）
+- [x] 冷启动优化（Splash 页立即显示，后端就绪后无缝切换）
+- [x] 本地离线语音识别（内置 whisper.cpp + ggml-base 模型）

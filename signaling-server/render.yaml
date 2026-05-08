@@ -1,0 +1,11 @@
+services:
+  - type: web
+    name: lingxi-signaling
+    runtime: go
+    buildCommand: go build -o server .
+    startCommand: ./server
+    envVars:
+      - key: PORT
+        value: "10000"
+      - key: SIGNALING_SECRET
+        sync: false

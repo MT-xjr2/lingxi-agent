@@ -1,0 +1,55 @@
+# Dependencies
+node_modules/
+frontend-desktop/dist/
+
+# Build output
+backend-desktop/smart-agent
+backend-desktop/smart-agent.exe
+backend-desktop/lingxi-agent
+signaling-server/lingxi-signaling
+dist-electron/
+
+# electron/resources/ holds large generated bundles (ai-engine, node-bin)
+# but bridge/ contains only our small source files (~5KB) and must be tracked.
+electron/resources/ai-engine/
+electron/resources/node-bin/
+electron/resources/node-bin-win/
+electron/resources/ccr/
+electron/resources/bridge/node_modules/
+electron/resources/bridge/package-lock.json
+# litellm-bridge 打包 Python 依赖目录（build-desktop.sh 生成）
+electron/resources/litellm-bridge/site-packages/
+# whisper.cpp 大模型文件（超出 GitHub 100MB 限制）
+electron/resources/whisper/ggml-base.bin
+electron/resources/whisper/whisper-cli
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+.DS_Store
+
+# Secrets - NEVER commit these
+ai-config/auth.json
+*.env
+.env.*
+*.lingxi-build-env
+
+# Database
+*.db
+*.db-wal
+*.db-shm
+
+# Logs
+*.log
+
+# npm
+npm-debug.log*
+.npm/
+
+# Mobile build output
+frontend-mobile/dist/
+
+# Temporary
+/tmp/

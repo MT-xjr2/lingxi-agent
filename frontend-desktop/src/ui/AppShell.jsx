@@ -1,0 +1,602 @@
+import { useEffect, useState, useRef, useCallback } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
+import { useStore, initStore } from '../state/useStore';
+import { SidebarSessions } from './SidebarSessions';
+import { ModelSwitcher } from './ModelSwitcher';
+import { RouterPill } from './RouterPill';
+import { ChatView } from '../chat/ChatView';
+import { AgentStatePill } from '../chat/AgentStatePill';
+import { SettingsPage } from '../settings/SettingsPage';
+import SkillsPage from '../SkillsPage';
+import KnowledgePage from '../KnowledgePage';
+import IMConnectorPage from '../IMConnectorPage';
+import MCPPage from '../MCPPage';
+import AgentFactoryPage from '../AgentFactoryPage';
+import ScheduledTasksPage from '../ScheduledTasksPage';
+import WorkflowPage from '../WorkflowPage';
+import NexusPage from '../nexus/NexusPage';
+import LoginPage from '../LoginPage';
+import { ToastStack, Modal, Button } from './primitives';
+import { cn } from './cn';
+import { MessageSquare, Settings as SettingsIcon, Brain, BookOpen, MessageCircle, Plug, Sparkles, PanelLeftClose, PanelLeftOpen, Clock, Workflow, Globe, LogOut, User, UserPlus, Check, X } from 'lucide-react';
+import { api, wsClient } from '../api/client';
+
+const SHORTCUTS = [
+  { keys: ['⌘', 'K'], desc: '搜索消息' },
+  { keys: ['⌘', 'N'], desc: '新建对话' },
+  { keys: ['⌘', 'B'], desc: '折叠/展开侧边栏' },
+  { keys: ['⌘', ','], desc: '打开设置' },
+  { keys: ['⌘', '/'], desc: '显示快捷键面板' },
+  { keys: ['⌘', '⇧', 'S'], desc: '截屏到输入框' },
+  { keys: ['Enter'], desc: '发送消息' },
+  { keys: ['Shift', 'Enter'], desc: '换行' },
+  { keys: ['/'], desc: '唤起斜杠命令' },
+  { keys: ['Esc'], desc: '关闭弹窗/面板' },
+];
+
+const pageMotion = {
+  initial: { opacity: 0, x: 12, scale: 0.98, filter: 'blur(4px)' },
+  animate: { opacity: 1, x: 0, scale: 1, filter: 'blur(0px)' },
+  exit: { opacity: 0, x: -8, scale: 0.99, filter: 'blur(2px)' },
+  transition: { duration: 0.25, ease: [.22, 1, .36, 1] },
+};
+
+// 主导航（居中带文字标签）
+const NAV_TABS = [
+  { id: 'chat', label: '对话', icon: MessageSquare },
+  { id: 'agents', label: '智能体', icon: Sparkles },
+  { id: 'skills', label: '技能', icon: Brain },
+  { id: 'knowledge', label: '知识库', icon: BookOpen },
+  { id: 'mcp', label: 'MCP', icon: Plug },
+];
+
+// 右侧辅助导航（仅图标）
+const RIGHT_TABS = [
+  { id: 'nexus', label: 'Nexus', icon: Globe },
+  { id: 'im', label: 'IM', icon: MessageCircle },
+  { id: 'workflow', label: '工作流', icon: Workflow },
+  { id: 'scheduled', label: '定时', icon: Clock },
+  { id: 'settings', label: '设置', icon: SettingsIcon },
+];
+
+function UserAvatarMenu({ user, onLogout, onSettings }) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const handler = (e) => { if (ref.current && !ref.current.contains(e.target)) setOpen(false); };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, [open]);
+
+  const providerLabel = { dingtalk: '钉钉', guest: '游客', google: 'Google', wechat: '微信', qq: 'QQ' };
+  const initial = (user?.nickname || '?')[0].toUpperCase();
+
+  return (
+    <div className="relative" ref={ref}>
+      <button
+        onClick={() => setOpen((v) => !v)}
+        className="flex items-center gap-1.5 p-0.5 rounded-full hover:ring-2 hover:ring-[color:var(--accent)]/30 transition-all"
+        title={user?.nickname || '用户'}
+      >
+        {user?.avatar_url ? (
+          <img src={user.avatar_url} alt="" className="w-7 h-7 rounded-full object-cover ring-1 ring-[color:var(--line)]" />
+        ) : (
+          <div className="w-7 h-7 rounded-full bg-[color:var(--accent)] flex items-center justify-center text-white text-xs font-bold ring-1 ring-[color:var(--accent)]">
+            {initial}
+          </div>
+        )}
+      </button>
+
+      <AnimatePresence>
+        {open && (
+          <motion.div
+            initial={{ opacity: 0, y: -4, scale: 0.95 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: -4, scale: 0.95 }}
+            transition={{ duration: 0.15 }}
+            className="absolute right-0 top-full mt-2 w-64 rounded-xl border border-[color:var(--line)] bg-[color:var(--bg-elev)] shadow-xl z-50 overflow-hidden"
+          >
+            <div className="p-4 border-b border-[color:var(--line)]">
+              <div className="flex items-center gap-3">
+                {user?.avatar_url ? (
+                  <img src={user.avatar_url} alt="" className="w-10 h-10 rounded-full object-cover ring-1 ring-[color:var(--line)]" />
+                ) : (
+                  <div className="w-10 h-10 rounded-full bg-[color:var(--accent)] flex items-center justify-center text-white text-sm font-bold">
+                    {initial}
+                  </div>
+                )}
+                <div className="flex-1 min-w-0">
+                  <div className="text-sm font-semibold text-[color:var(--text)] truncate">{user?.nickname || '用户'}</div>
+                  <div className="text-xs text-[color:var(--text-faint)] truncate">
+                    {user?.email || (providerLabel[user?.provider] || user?.provider) + '账号'}
+                  </div>
+                </div>
+              </div>
+            </div>
+            <div className="py-1">
+              <button
+                onClick={() => { setOpen(false); onSettings(); }}
+                className="w-full flex items-center gap-2.5 px-4 py-2.5 text-sm text-[color:var(--text)] hover:bg-[color:var(--bg-soft)] transition"
+              >
+                <User size={14} className="text-[color:var(--text-faint)]" />
+                账号设置
+              </button>
+              <button
+                onClick={() => { setOpen(false); onLogout(); }}
+                className="w-full flex items-center gap-2.5 px-4 py-2.5 text-sm text-red-500 hover:bg-red-50 dark:hover:bg-red-500/10 transition"
+              >
+                <LogOut size={14} />
+                退出登录
+              </button>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </div>
+  );
+}
+
+// 全局 Nexus 通知浮层
+function NexusNotificationOverlay() {
+  const nexusNotifications = useStore((s) => s.nexusNotifications);
+  const removeNexusNotif = useStore((s) => s.removeNexusNotif);
+  const setView = useStore((s) => s.setView);
+  const view = useStore((s) => s.view);
+
+  const handleRespondConnect = useCallback(async (notifId, contactId, accept) => {
+    try {
+      await api.respondConnect(contactId, accept);
+    } catch {}
+    removeNexusNotif(notifId);
+  }, [removeNexusNotif]);
+
+  const handleGoToNexus = useCallback((notifId) => {
+    setView('nexus');
+    removeNexusNotif(notifId);
+  }, [setView, removeNexusNotif]);
+
+  // 不在 Nexus 页面时才显示浮层
+  if (view === 'nexus' || nexusNotifications.length === 0) return null;
+
+  return (
+    <div className="fixed top-14 right-4 z-[100] flex flex-col gap-2 max-w-sm">
+      <AnimatePresence>
+        {nexusNotifications.map((notif) => (
+          <motion.div
+            key={notif.id}
+            initial={{ opacity: 0, x: 50, scale: 0.9 }}
+            animate={{ opacity: 1, x: 0, scale: 1 }}
+            exit={{ opacity: 0, x: 50, scale: 0.9 }}
+            className="p-3 rounded-xl border border-[color:var(--line)] bg-[color:var(--bg-elev)] shadow-xl backdrop-blur"
+          >
+            {notif.type === 'connect_request' && (
+              <div className="space-y-2">
+                <div className="flex items-center gap-2">
+                  <UserPlus size={14} className="text-amber-500" />
+                  <span className="text-xs font-medium text-[color:var(--text)]">
+                    <span className="font-bold">{notif.nickname || '未知'}</span> 请求建联
+                  </span>
+                </div>
+                <div className="flex gap-2">
+                  <Button variant="primary" size="sm" onClick={() => handleRespondConnect(notif.id, notif.contactId, true)}>
+                    <Check size={12} /> 同意
+                  </Button>
+                  <Button variant="ghost" size="sm" onClick={() => handleRespondConnect(notif.id, notif.contactId, false)}>
+                    <X size={12} /> 拒绝
+                  </Button>
+                </div>
+              </div>
+            )}
+            {notif.type === 'conversation_request' && (
+              <div className="space-y-2">
+                <div className="flex items-center gap-2">
+                  <MessageSquare size={14} className="text-blue-500" />
+                  <span className="text-xs font-medium text-[color:var(--text)]">
+                    <span className="font-bold">{notif.peerNickname || '未知'}</span> 发起对话请求
+                  </span>
+                </div>
+                <div className="text-[10px] text-[color:var(--text-faint)] truncate">{notif.topic || ''}</div>
+                <div className="flex gap-2">
+                  <Button variant="primary" size="sm" onClick={() => handleGoToNexus(notif.id)}>
+                    前往处理
+                  </Button>
+                  <Button variant="ghost" size="sm" onClick={() => removeNexusNotif(notif.id)}>
+                    稍后
+                  </Button>
+                </div>
+              </div>
+            )}
+            {notif.type === 'contact_deleted' && (
+              <div className="flex items-center gap-2">
+                <X size={14} className="text-red-400" />
+                <span className="text-xs text-[color:var(--text-soft)]">联系人已被对方删除</span>
+                <Button variant="ghost" size="sm" onClick={() => removeNexusNotif(notif.id)}>
+                  <X size={12} />
+                </Button>
+              </div>
+            )}
+            {notif.type === 'delivery_failed' && (
+              <div className="flex items-center gap-2">
+                <X size={14} className="text-red-400" />
+                <span className="text-xs text-[color:var(--text-soft)]">消息投递失败: {notif.reason}</span>
+                <Button variant="ghost" size="sm" onClick={() => removeNexusNotif(notif.id)}>
+                  <X size={12} />
+                </Button>
+              </div>
+            )}
+          </motion.div>
+        ))}
+      </AnimatePresence>
+    </div>
+  );
+}
+
+export function AppShell() {
+  const view = useStore((s) => s.view);
+  const setView = useStore((s) => s.setView);
+  const notifications = useStore((s) => s.notifications);
+  const sidebarCollapsed = useStore((s) => s.sidebarCollapsed);
+  const toggleSidebar = useStore((s) => s.toggleSidebar);
+  const isLoggedIn = useStore((s) => s.isLoggedIn);
+  const authChecked = useStore((s) => s.authChecked);
+  const currentUser = useStore((s) => s.currentUser);
+  const logout = useStore((s) => s.logout);
+  const addNexusNotif = useStore((s) => s.addNexusNotif);
+
+  const [pendingInvite, setPendingInvite] = useState(null);
+  const [inviteAgentId, setInviteAgentId] = useState('');
+  const [inviteAgents, setInviteAgents] = useState([]);
+  const [inviteSubmitting, setInviteSubmitting] = useState(false);
+
+  useEffect(() => {
+    initStore();
+  }, []);
+
+  // 全局 Nexus WS 事件监听（不依赖 NexusPage 是否挂载）
+  useEffect(() => {
+    if (!isLoggedIn) return;
+    const unsub = wsClient.on((msg) => {
+      if (msg.event === 'nexus_connect_request') {
+        try {
+          const d = JSON.parse(msg.data);
+          addNexusNotif({
+            type: 'connect_request',
+            contactId: d.id,
+            peerId: d.peer_id,
+            nickname: d.nickname,
+          });
+        } catch {}
+      }
+      if (msg.event === 'a2a_conversation_request' || msg.event === 'a2a_conversation_invite') {
+        try {
+          const d = JSON.parse(msg.data);
+          const convId = d.id || d.conv_id;
+          if (convId) {
+            setPendingInvite((prev) => prev || {
+              convId,
+              peerNickname: d.peer_nickname,
+              agentName: d.agent_name,
+              topic: d.topic,
+              goal: d.goal,
+            });
+            api.listAgents().then(setInviteAgents).catch(() => {});
+          }
+        } catch {}
+      }
+      if (msg.event === 'nexus_contact_deleted') {
+        try {
+          addNexusNotif({ type: 'contact_deleted' });
+        } catch {}
+      }
+      if (msg.event === 'wan_delivery_failed') {
+        try {
+          const d = JSON.parse(msg.data);
+          if (d.original_type === 'relay') {
+            addNexusNotif({
+              type: 'delivery_failed',
+              reason: d.reason === 'peer_offline' ? '对方不在线' : '投递失败',
+            });
+          }
+        } catch {}
+      }
+    });
+    return unsub;
+  }, [isLoggedIn, addNexusNotif]);
+
+  const handleAcceptInvite = useCallback(async () => {
+    if (!pendingInvite || !inviteAgentId) return;
+    setInviteSubmitting(true);
+    try {
+      await api.acceptRemoteConversation(pendingInvite.convId, Number(inviteAgentId));
+      setPendingInvite(null);
+      setInviteAgentId('');
+      setView('nexus');
+    } catch {}
+    setInviteSubmitting(false);
+  }, [pendingInvite, inviteAgentId, setView]);
+
+  const handleRejectInvite = useCallback(async () => {
+    if (!pendingInvite) return;
+    try {
+      await api.rejectRemoteConversation(pendingInvite.convId);
+    } catch {}
+    setPendingInvite(null);
+    setInviteAgentId('');
+  }, [pendingInvite]);
+
+  const [shortcutsOpen, setShortcutsOpen] = useState(false);
+
+  useEffect(() => {
+    if (!isLoggedIn) return;
+    const handler = (e) => {
+      const mod = e.metaKey || e.ctrlKey;
+      if (mod && e.key === 'b') { e.preventDefault(); toggleSidebar(); return; }
+      if (mod && e.key === '/') { e.preventDefault(); setShortcutsOpen((v) => !v); return; }
+      if (mod && e.key === 'n') { e.preventDefault(); useStore.getState().createSession(); return; }
+      if (mod && e.key === ',') { e.preventDefault(); setView('settings'); return; }
+    };
+    document.addEventListener('keydown', handler);
+    return () => document.removeEventListener('keydown', handler);
+  }, [isLoggedIn, toggleSidebar, setView]);
+
+  // 认证状态检查中，显示加载
+  if (!authChecked) {
+    return (
+      <div className="h-screen flex items-center justify-center bg-[color:var(--bg)]" style={{ WebkitAppRegion: 'no-drag' }}>
+        <div className="fixed top-0 left-0 right-0 h-9 z-50" style={{ WebkitAppRegion: 'drag' }} />
+        <div className="text-center space-y-3">
+          <img src="/logo.png" alt="灵犀" className="w-16 h-16 rounded-2xl mx-auto animate-pulse" />
+          <p className="text-sm text-[color:var(--text-soft)]">加载中…</p>
+        </div>
+      </div>
+    );
+  }
+
+  // 未登录，显示登录页
+  if (!isLoggedIn) {
+    return (
+      <>
+        <LoginPage />
+        <ToastStack items={notifications} />
+      </>
+    );
+  }
+
+  const showSidebar = view === 'chat';
+
+  return (
+    <div className="h-screen flex flex-col bg-[color:var(--bg)]">
+      {/* 顶部栏：Logo + Tab 导航 + 模型切换 */}
+      <header className="app-drag h-12 flex items-center px-4 border-b border-[color:var(--line)] glass relative shrink-0">
+        <div className="absolute left-0 right-0 top-0 h-px bg-gradient-to-r from-transparent via-[color:var(--accent)]/40 to-transparent" />
+        <div className="absolute left-0 right-0 bottom-0 h-[3px] bg-gradient-to-b from-[color:var(--line)] to-transparent opacity-50 pointer-events-none" />
+
+        {/* 左侧：Logo + AgentState */}
+        <div className="flex items-center gap-2 pl-16 shrink-0">
+          <img src="/logo.png" alt="灵犀" className="w-7 h-7 rounded-lg shadow-soft ring-1 ring-[color:var(--accent-soft)]" />
+          <div className="text-sm font-semibold tracking-tight text-gradient">灵犀</div>
+          <div className="ml-2"><AgentStatePill /></div>
+        </div>
+
+        {/* 左侧拖拽占位 */}
+        <div className="flex-1 min-w-[24px]" />
+
+        {/* 中间：主导航（图标+文字） */}
+        <nav className="app-no-drag flex items-center justify-center gap-0.5" aria-label="主导航">
+          {NAV_TABS.map((tab) => {
+            const Icon = tab.icon;
+            const active = view === tab.id;
+            return (
+              <button
+                key={tab.id}
+                onClick={() => setView(tab.id)}
+                title={tab.label}
+                className={cn(
+                  'relative flex items-center justify-center gap-1 rounded-lg text-xs font-medium transition-all duration-200 px-2.5 py-1.5',
+                  active
+                    ? 'text-[color:var(--accent)]'
+                    : 'text-[color:var(--text-soft)] hover:text-[color:var(--text)] hover:bg-[color:var(--bg-soft)]'
+                )}
+                aria-current={active ? 'page' : undefined}
+              >
+                {active && (
+                  <motion.span
+                    layoutId="tab-indicator"
+                    className="absolute inset-0 rounded-lg bg-[color:var(--accent-soft)] shadow-[0_0_12px_var(--accent-glow),inset_0_1px_0_rgba(255,255,255,0.08)]"
+                    transition={{ type: 'spring', stiffness: 400, damping: 30 }}
+                  />
+                )}
+                <span className="relative z-10 flex items-center gap-1">
+                  <Icon size={14} />
+                  <span>{tab.label}</span>
+                </span>
+              </button>
+            );
+          })}
+        </nav>
+
+        {/* 右侧拖拽占位 */}
+        <div className="flex-1 min-w-[24px]" />
+
+        {/* 右侧：辅助导航（仅图标）+ 路由状态 + 模型切换 + 侧边栏 */}
+        <div className="app-no-drag flex items-center gap-0.5 shrink-0">
+          <div className="flex items-center gap-0.5 mr-2 border-r border-[color:var(--line)] pr-2">
+            {RIGHT_TABS.map((tab) => {
+              const Icon = tab.icon;
+              const active = view === tab.id;
+              return (
+                <button
+                  key={tab.id}
+                  onClick={() => setView(tab.id)}
+                  title={tab.label}
+                  className={cn(
+                    'relative p-1.5 rounded-lg transition-all duration-200',
+                    active
+                      ? 'text-[color:var(--accent)] bg-[color:var(--accent-soft)]'
+                      : 'text-[color:var(--text-faint)] hover:text-[color:var(--text)] hover:bg-[color:var(--bg-soft)]'
+                  )}
+                >
+                  <Icon size={15} />
+                </button>
+              );
+            })}
+          </div>
+          <RouterPill />
+          <ModelSwitcher />
+          {currentUser && (
+            <UserAvatarMenu
+              user={currentUser}
+              onLogout={logout}
+              onSettings={() => { setView('settings'); useStore.getState().setSettingsTab('account'); }}
+            />
+          )}
+          {showSidebar && (
+            <button
+              onClick={toggleSidebar}
+              className="p-1.5 rounded-lg text-[color:var(--text-faint)] hover:text-[color:var(--text)] hover:bg-[color:var(--bg-soft)] transition"
+              title={sidebarCollapsed ? '展开侧边栏 ⌘B' : '收起侧边栏 ⌘B'}
+            >
+              {sidebarCollapsed ? <PanelLeftOpen size={16} /> : <PanelLeftClose size={16} />}
+            </button>
+          )}
+        </div>
+      </header>
+
+      <div className="flex-1 flex min-h-0">
+        {/* 侧边栏：纯会话列表（仅对话页显示） */}
+        {showSidebar && (
+          <aside className={cn(
+            'shrink-0 border-r border-[color:var(--line)] bg-[color:var(--bg-elev)]/80 backdrop-blur flex flex-col transition-all duration-300',
+            sidebarCollapsed ? 'w-0 overflow-hidden opacity-0' : 'w-[260px] opacity-100'
+          )}>
+            <SidebarSessions />
+          </aside>
+        )}
+
+        {/* 主区 */}
+        <main className="flex-1 flex flex-col min-h-0 relative">
+          <AnimatePresence mode="wait">
+            {view === 'chat' && (
+              <motion.div key="chat" className="flex-1 flex flex-col min-h-0" {...pageMotion}>
+                <ChatView />
+              </motion.div>
+            )}
+            {view === 'settings' && (
+              <motion.div key="settings" className="flex-1 flex flex-col min-h-0" {...pageMotion}>
+                <SettingsPage />
+              </motion.div>
+            )}
+            {view === 'agents' && (
+              <motion.div key="agents" className="flex-1 overflow-auto scrollable bg-[color:var(--bg)] p-6" {...pageMotion}>
+                <AgentFactoryPage onBack={() => setView('chat')} />
+              </motion.div>
+            )}
+            {view === 'mcp' && (
+              <motion.div key="mcp" className="flex-1 overflow-auto scrollable bg-[color:var(--bg)] p-6" {...pageMotion}>
+                <MCPPage onBack={() => setView('chat')} />
+              </motion.div>
+            )}
+            {view === 'skills' && (
+              <motion.div key="skills" className="flex-1 overflow-auto scrollable bg-[color:var(--bg)] p-4" {...pageMotion}>
+                <SkillsPage />
+              </motion.div>
+            )}
+            {view === 'knowledge' && (
+              <motion.div key="knowledge" className="flex-1 overflow-auto scrollable bg-[color:var(--bg)] p-4" {...pageMotion}>
+                <KnowledgePage />
+              </motion.div>
+            )}
+            {view === 'im' && (
+              <motion.div key="im" className="flex-1 overflow-auto scrollable bg-[color:var(--bg)] p-4" {...pageMotion}>
+                <IMConnectorPage />
+              </motion.div>
+            )}
+            {view === 'workflow' && (
+              <motion.div key="workflow" className="flex-1 overflow-auto scrollable bg-[color:var(--bg)] p-6" {...pageMotion}>
+                <WorkflowPage />
+              </motion.div>
+            )}
+            {view === 'nexus' && (
+              <motion.div key="nexus" className="flex-1 flex flex-col min-h-0" {...pageMotion}>
+                <NexusPage />
+              </motion.div>
+            )}
+            {view === 'scheduled' && (
+              <motion.div key="scheduled" className="flex-1 overflow-auto scrollable bg-[color:var(--bg)] p-4" {...pageMotion}>
+                <ScheduledTasksPage />
+              </motion.div>
+            )}
+          </AnimatePresence>
+        </main>
+      </div>
+
+      <Modal open={shortcutsOpen} onClose={() => setShortcutsOpen(false)} title="快捷键" width={420}>
+        <div className="space-y-1">
+          {SHORTCUTS.map((s) => (
+            <div key={s.desc} className="flex items-center justify-between py-2 px-1 border-b border-[color:var(--line)] last:border-0">
+              <span className="text-sm text-[color:var(--text-soft)]">{s.desc}</span>
+              <div className="flex items-center gap-1">
+                {s.keys.map((k) => (
+                  <kbd key={k} className="inline-flex items-center justify-center min-w-[24px] h-6 px-1.5 rounded-md bg-[color:var(--bg-soft)] border border-[color:var(--line)] text-xs font-mono text-[color:var(--text-soft)]">{k}</kbd>
+                ))}
+              </div>
+            </div>
+          ))}
+        </div>
+      </Modal>
+
+      {/* 对话邀请弹窗 */}
+      <Modal open={!!pendingInvite} onClose={() => {}} title="收到对话邀请" width={440}>
+        {pendingInvite && (
+          <div className="space-y-4">
+            <div className="p-4 rounded-xl bg-[color:var(--bg-soft)] space-y-2">
+              <div className="flex items-center gap-2">
+                <div className="w-10 h-10 rounded-xl bg-purple-100 dark:bg-purple-900/30 flex items-center justify-center text-purple-600 dark:text-purple-400 font-bold text-sm">
+                  {(pendingInvite.peerNickname || '?')[0]}
+                </div>
+                <div>
+                  <div className="text-sm font-medium text-[color:var(--text)]">{pendingInvite.peerNickname || '未知用户'}</div>
+                  <div className="text-[10px] text-[color:var(--text-faint)]">通过 {pendingInvite.agentName || 'Agent'} 向你发起对话</div>
+                </div>
+              </div>
+              {pendingInvite.topic && (
+                <div className="text-xs text-[color:var(--text-soft)]">
+                  <span className="text-[color:var(--text-faint)]">主题：</span>{pendingInvite.topic}
+                </div>
+              )}
+              {pendingInvite.goal && (
+                <div className="text-xs text-[color:var(--text-soft)]">
+                  <span className="text-[color:var(--text-faint)]">目标：</span>{pendingInvite.goal}
+                </div>
+              )}
+            </div>
+
+            <div>
+              <label className="text-xs font-medium text-[color:var(--text-soft)] mb-1.5 block">选择代表你回答的 Agent</label>
+              <select
+                value={inviteAgentId}
+                onChange={(e) => setInviteAgentId(e.target.value)}
+                className="w-full h-9 px-3 rounded-lg border border-[color:var(--line)] bg-[color:var(--bg)] text-sm text-[color:var(--text)] focus:outline-none focus:border-[color:var(--accent)]"
+              >
+                <option value="">请选择 Agent...</option>
+                {inviteAgents.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
+              </select>
+            </div>
+
+            <div className="flex justify-end gap-2 pt-2">
+              <Button variant="ghost" onClick={handleRejectInvite}>拒绝</Button>
+              <Button variant="primary" onClick={handleAcceptInvite} disabled={!inviteAgentId || inviteSubmitting}>
+                {inviteSubmitting ? '接受中...' : '接受对话'}
+              </Button>
+            </div>
+          </div>
+        )}
+      </Modal>
+
+      <NexusNotificationOverlay />
+      <ToastStack items={notifications} />
+    </div>
+  );
+}

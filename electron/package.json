@@ -1,0 +1,166 @@
+{
+  "name": "lingxi-agent",
+  "version": "1.0.26",
+  "description": "灵犀 AI 助手",
+  "main": "main.js",
+  "private": true,
+  "scripts": {
+    "start": "electron .",
+    "pack": "electron-builder --dir",
+    "dist": "electron-builder",
+    "dist:mac": "electron-builder --mac --arm64",
+    "dist:win": "electron-builder --win --x64"
+  },
+  "dependencies": {},
+  "devDependencies": {
+    "electron": "^36.0.0",
+    "electron-builder": "^25.0.0"
+  },
+  "build": {
+    "appId": "com.lingxi.agent",
+    "productName": "灵犀",
+    "copyright": "Copyright © 2025 Lingxi Agent Contributors",
+    "directories": {
+      "output": "../dist-electron"
+    },
+    "files": [
+      "main.js",
+      "preload.js",
+      "splash.html",
+      "assets/**"
+    ],
+    "extraResources": [
+      {
+        "from": "../frontend-desktop/dist",
+        "to": "frontend-dist",
+        "filter": [
+          "**/*"
+        ]
+      },
+      {
+        "from": "resources/ai-engine",
+        "to": "ai-engine"
+      },
+      {
+        "from": "resources/bridge",
+        "to": "bridge"
+      },
+      {
+        "from": "resources/litellm-bridge",
+        "to": "litellm-bridge",
+        "filter": [
+          "**/*",
+          "!site-packages/.cache/**"
+        ]
+      },
+      {
+        "from": "../ai-config",
+        "to": "ai-config",
+        "filter": [
+          "auth.json",
+          "settings.json",
+          "claude.json",
+          "CLAUDE.md",
+          "skills/**",
+          ".claude/agents/**"
+        ]
+      }
+    ],
+    "mac": {
+      "category": "public.app-category.productivity",
+      "identity": null,
+      "extraResources": [
+        {
+          "from": "../backend-desktop/smart-agent",
+          "to": "smart-agent"
+        },
+        {
+          "from": "resources/node-bin",
+          "to": "node-bin"
+        },
+        {
+          "from": "resources/whisper",
+          "to": "whisper",
+          "filter": [
+            "**/*"
+          ]
+        }
+      ],
+      "target": [
+        {
+          "target": "dmg",
+          "arch": [
+            "arm64"
+          ]
+        },
+        {
+          "target": "zip",
+          "arch": [
+            "arm64"
+          ]
+        }
+      ],
+      "icon": "assets/icon.icns",
+      "hardenedRuntime": false,
+      "gatekeeperAssess": false
+    },
+    "win": {
+      "extraResources": [
+        {
+          "from": "../backend-desktop/smart-agent.exe",
+          "to": "smart-agent.exe"
+        },
+        {
+          "from": "resources/node-bin-win",
+          "to": "node-bin"
+        }
+      ],
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        },
+        {
+          "target": "portable",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "icon": "assets/icon.ico"
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "installerIcon": "assets/icon.ico",
+      "uninstallerIcon": "assets/icon.ico",
+      "installerHeaderIcon": "assets/icon.ico",
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "灵犀"
+    },
+    "dmg": {
+      "title": "灵犀",
+      "window": {
+        "width": 540,
+        "height": 380
+      },
+      "contents": [
+        {
+          "x": 150,
+          "y": 185,
+          "type": "file"
+        },
+        {
+          "x": 390,
+          "y": 185,
+          "type": "link",
+          "path": "/Applications"
+        }
+      ]
+    }
+  }
+}

@@ -1,0 +1,1633 @@
+package db
+
+import (
+	"database/sql"
+	"log"
+	"strconv"
+	"time"
+
+	"lingxi-agent/config"
+
+	_ "github.com/ncruces/go-sqlite3/driver"
+	_ "github.com/ncruces/go-sqlite3/embed"
+)
+
+var DB *sql.DB
+
+func Init() {
+	cfg := config.Get()
+
+	var err error
+	DB, err = sql.Open("sqlite3", "file:"+cfg.DB.Path+"?_journal=WAL&_timeout=5000")
+	if err != nil {
+		log.Fatalf("[db] open error: %v", err)
+	}
+
+	DB.SetMaxOpenConns(1)
+
+	if err = DB.Ping(); err != nil {
+		log.Fatalf("[db] ping error: %v", err)
+	}
+
+	migrate()
+	log.Printf("[db] SQLite ready: %s", cfg.DB.Path)
+}
+
+func migrate() {
+	stmts := []string{
+		`CREATE TABLE IF NOT EXISTS sessions (
+			id                INTEGER PRIMARY KEY AUTOINCREMENT,
+			title             TEXT    NOT NULL DEFAULT '新对话',
+			claude_session_id TEXT    DEFAULT '',
+			message_count     INTEGER NOT NULL DEFAULT 0,
+			created_at        DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+			updated_at        DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+		)`,
+		`CREATE TABLE IF NOT EXISTS messages (
+			id         INTEGER PRIMARY KEY AUTOINCREMENT,
+			session_id INTEGER NOT NULL,
+			role       TEXT    NOT NULL,
+			content    TEXT    NOT NULL DEFAULT '',
+			created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+		)`,
+		`CREATE TABLE IF NOT EXISTS skills (
+			id          INTEGER PRIMARY KEY AUTOINCREMENT,
+			name        TEXT    NOT NULL UNIQUE,
+			description TEXT    NOT NULL DEFAULT '',
+			file_path   TEXT    NOT NULL DEFAULT '',
+			installed   INTEGER NOT NULL DEFAULT 0,
+			created_at  DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+			updated_at  DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+		)`,
+		`CREATE TABLE IF NOT EXISTS tasks (
+			id          INTEGER PRIMARY KEY AUTOINCREMENT,
+			session_id  INTEGER NOT NULL,
+			title       TEXT    NOT NULL DEFAULT '',
+			status      TEXT    NOT NULL DEFAULT 'running',
+			progress    TEXT    NOT NULL DEFAULT '',
+			created_at  DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+			updated_at  DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+		)`,
+		`CREATE TABLE IF NOT EXISTS pending_tasks (
+			id             INTEGER PRIMARY KEY AUTOINCREMENT,
+			session_id     INTEGER NOT NULL UNIQUE,
+			task_desc      TEXT    NOT NULL DEFAULT '',
+			missing_fields TEXT    NOT NULL DEFAULT '[]',
+			created_at     DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+			updated_at     DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+		)`,
+		`CREATE TABLE IF NOT EXISTS knowledge (
+			id         INTEGER PRIMARY KEY AUTOINCREMENT,
+			title      TEXT    NOT NULL DEFAULT '',
+			file_path  TEXT    NOT NULL UNIQUE,
+			category   TEXT    NOT NULL DEFAULT 'docs',
+			tags       TEXT    NOT NULL DEFAULT '[]',
+			summary    TEXT    NOT NULL DEFAULT '',
+			size       INTEGER NOT NULL DEFAULT 0,
+			created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+		)`,
+		`CREATE TABLE IF NOT EXISTS im_connectors (
+			id         INTEGER PRIMARY KEY AUTOINCREMENT,
+			platform   TEXT    NOT NULL UNIQUE,
+			enabled    INTEGER NOT NULL DEFAULT 0,
+			config     TEXT    NOT NULL DEFAULT '{}',
+			created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+			updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+		)`,
+		`CREATE TABLE IF NOT EXISTS im_sessions (
+			id          INTEGER PRIMARY KEY AUTOINCREMENT,
+			platform    TEXT    NOT NULL,
+			scope_key   TEXT    NOT NULL,
+			session_id  INTEGER NOT NULL,
+			last_active DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+			UNIQUE(platform, scope_key)
+		)`,
+		// ── providers / api_profiles / usage（v2+）────────────────
+		`CREATE TABLE IF NOT EXISTS providers (
+			id               INTEGER PRIMARY KEY AUTOINCREMENT,
+			code             TEXT    NOT NULL UNIQUE,
+			name             TEXT    NOT NULL,
+			protocol         TEXT    NOT NULL DEFAULT 'anthropic',
+			default_base_url TEXT    NOT NULL DEFAULT '',
+			default_model    TEXT    NOT NULL DEFAULT '',
+			usage_api_meta   TEXT    NOT NULL DEFAULT '{}',
+			doc_url          TEXT    NOT NULL DEFAULT '',
+			builtin          INTEGER NOT NULL DEFAULT 0,
+			created_at       DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+		)`,
+		`CREATE TABLE IF NOT EXISTS api_profiles (
+			id                 INTEGER PRIMARY KEY AUTOINCREMENT,
+			name               TEXT    NOT NULL,
+			provider_id        INTEGER NOT NULL,
+			base_url           TEXT    NOT NULL DEFAULT '',
+			model              TEXT    NOT NULL DEFAULT '',
+			auth_token_cipher  TEXT    NOT NULL DEFAULT '',
+			auth_token_mask    TEXT    NOT NULL DEFAULT '',
+			extra              TEXT    NOT NULL DEFAULT '{}',
+			is_active          INTEGER NOT NULL DEFAULT 0,
+			created_at         DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+			updated_at         DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+		)`,
+		`CREATE TABLE IF NOT EXISTS usage_records (
+			id          INTEGER PRIMARY KEY AUTOINCREMENT,
+			session_id  INTEGER NOT NULL,
+			message_id  INTEGER NOT NULL DEFAULT 0,
+			profile_id  INTEGER NOT NULL DEFAULT 0,
+			model       TEXT    NOT NULL DEFAULT '',
+			input_tokens   INTEGER NOT NULL DEFAULT 0,
+			output_tokens  INTEGER NOT NULL DEFAULT 0,
+			cache_read_tokens   INTEGER NOT NULL DEFAULT 0,
+			cache_write_tokens  INTEGER NOT NULL DEFAULT 0,
+			cost_usd    REAL    NOT NULL DEFAULT 0,
+			duration_ms INTEGER NOT NULL DEFAULT 0,
+			created_at  DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+		)`,
+		`CREATE INDEX IF NOT EXISTS idx_usage_records_session ON usage_records(session_id)`,
+		`CREATE INDEX IF NOT EXISTS idx_usage_records_created ON usage_records(created_at)`,
+		`CREATE TABLE IF NOT EXISTS usage_quota_cache (
+			profile_id  INTEGER PRIMARY KEY,
+			snapshot    TEXT    NOT NULL DEFAULT '{}',
+			fetched_at  DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+		)`,
+		// ── MCP Servers ──────────────────────────────────────────
+		`CREATE TABLE IF NOT EXISTS mcp_servers (
+			id           INTEGER PRIMARY KEY AUTOINCREMENT,
+			name         TEXT    NOT NULL UNIQUE,
+			transport    TEXT    NOT NULL DEFAULT 'stdio',
+			command      TEXT    NOT NULL DEFAULT '',
+			args         TEXT    NOT NULL DEFAULT '[]',
+			env          TEXT    NOT NULL DEFAULT '{}',
+			url          TEXT    NOT NULL DEFAULT '',
+			headers      TEXT    NOT NULL DEFAULT '{}',
+			enabled      INTEGER NOT NULL DEFAULT 1,
+			builtin      INTEGER NOT NULL DEFAULT 0,
+			description  TEXT    NOT NULL DEFAULT '',
+			created_at   DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+			updated_at   DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+		)`,
+		// ── Agents（智能体工厂）─────────────────────────────────
+		`CREATE TABLE IF NOT EXISTS agents (
+			id              INTEGER PRIMARY KEY AUTOINCREMENT,
+			name            TEXT    NOT NULL,
+			avatar          TEXT    NOT NULL DEFAULT '✦',
+			description     TEXT    NOT NULL DEFAULT '',
+			system_prompt   TEXT    NOT NULL DEFAULT '',
+			profile_id      INTEGER NOT NULL DEFAULT 0,
+			skill_ids       TEXT    NOT NULL DEFAULT '[]',
+			mcp_server_ids  TEXT    NOT NULL DEFAULT '[]',
+			knowledge_ids   TEXT    NOT NULL DEFAULT '[]',
+			allow_all       INTEGER NOT NULL DEFAULT 1,
+			builtin         INTEGER NOT NULL DEFAULT 0,
+			created_at      DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+			updated_at      DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+		)`,
+	}
+	for _, s := range stmts {
+		if _, err := DB.Exec(s); err != nil {
+			log.Fatalf("[db] migrate error: %v\nSQL: %s", err, s)
+		}
+	}
+
+	// 列级迁移：messages.usage（保存每条消息的 token/cost 摘要）
+	addColumnIfMissing("messages", "usage", "TEXT NOT NULL DEFAULT ''")
+	// 列级迁移：api_profiles.transformer（bridge 路由层保留字段，留空表示自动）
+	addColumnIfMissing("api_profiles", "transformer", "TEXT NOT NULL DEFAULT ''")
+	// 列级迁移：sessions.agent_id（关联智能体；0=通用助理）
+	addColumnIfMissing("sessions", "agent_id", "INTEGER NOT NULL DEFAULT 0")
+	// 列级迁移：sessions.pinned（置顶会话）
+	addColumnIfMissing("sessions", "pinned", "INTEGER NOT NULL DEFAULT 0")
+	addColumnIfMissing("usage_records", "estimated", "INTEGER NOT NULL DEFAULT 0")
+	addColumnIfMissing("agents", "temperature", "REAL NOT NULL DEFAULT 0")
+	addColumnIfMissing("agents", "max_tokens", "INTEGER NOT NULL DEFAULT 0")
+	addColumnIfMissing("skills", "source", "TEXT NOT NULL DEFAULT 'local'")
+	addColumnIfMissing("skills", "marketplace_id", "TEXT NOT NULL DEFAULT ''")
+	addColumnIfMissing("skills", "marketplace_version", "TEXT NOT NULL DEFAULT ''")
+	addColumnIfMissing("skills", "author", "TEXT NOT NULL DEFAULT ''")
+	addColumnIfMissing("messages", "feedback", "TEXT NOT NULL DEFAULT ''")
+
+	// ── 定时任务 表 ──────────────────────────────────────────────
+	for _, s := range []string{
+		`CREATE TABLE IF NOT EXISTS scheduled_tasks (
+			id              INTEGER PRIMARY KEY AUTOINCREMENT,
+			name            TEXT    NOT NULL,
+			prompt          TEXT    NOT NULL DEFAULT '',
+			agent_id        INTEGER NOT NULL DEFAULT 0,
+			cron_expr       TEXT    NOT NULL DEFAULT '',
+			stateful        INTEGER NOT NULL DEFAULT 0,
+			session_id      INTEGER DEFAULT NULL,
+			notify_desktop  INTEGER NOT NULL DEFAULT 1,
+			enabled         INTEGER NOT NULL DEFAULT 1,
+			last_run_at     DATETIME DEFAULT NULL,
+			next_run_at     DATETIME DEFAULT NULL,
+			run_count       INTEGER NOT NULL DEFAULT 0,
+			created_at      DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+			updated_at      DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+		)`,
+		`CREATE TABLE IF NOT EXISTS scheduled_task_runs (
+			id          INTEGER PRIMARY KEY AUTOINCREMENT,
+			task_id     INTEGER NOT NULL,
+			session_id  INTEGER NOT NULL,
+			status      TEXT    NOT NULL DEFAULT 'running',
+			summary     TEXT    NOT NULL DEFAULT '',
+			started_at  DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+			finished_at DATETIME DEFAULT NULL
+		)`,
+		`CREATE INDEX IF NOT EXISTS idx_sched_runs_task ON scheduled_task_runs(task_id)`,
+	} {
+		if _, err := DB.Exec(s); err != nil {
+			log.Printf("[db] scheduled_tasks migrate: %v", err)
+		}
+	}
+
+	// ── 长期记忆表 ─────────────────────────────────────────────────
+	for _, s := range []string{
+		`CREATE TABLE IF NOT EXISTS memories (
+			id         INTEGER PRIMARY KEY AUTOINCREMENT,
+			agent_id   INTEGER NOT NULL DEFAULT 0,
+			content    TEXT    NOT NULL,
+			category   TEXT    NOT NULL DEFAULT 'general',
+			created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+		)`,
+		`CREATE INDEX IF NOT EXISTS idx_memories_agent ON memories(agent_id)`,
+	} {
+		if _, err := DB.Exec(s); err != nil {
+			log.Printf("[db] memories migrate: %v", err)
+		}
+	}
+
+	// ── 知识库自定义分类表 ───────────────────────────────────────────
+	for _, s := range []string{
+		`CREATE TABLE IF NOT EXISTS knowledge_categories (
+			id         INTEGER PRIMARY KEY AUTOINCREMENT,
+			name       TEXT    NOT NULL,
+			icon       TEXT    NOT NULL DEFAULT '📁',
+			sort_order INTEGER NOT NULL DEFAULT 0,
+			created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+		)`,
+	} {
+		if _, err := DB.Exec(s); err != nil {
+			log.Printf("[db] knowledge_categories migrate: %v", err)
+		}
+	}
+	// 预置默认分类（仅在表为空时插入）
+	var catCount int
+	DB.QueryRow(`SELECT COUNT(1) FROM knowledge_categories`).Scan(&catCount)
+	if catCount == 0 {
+		for _, s := range []string{
+			`INSERT INTO knowledge_categories (name, icon, sort_order) VALUES ('文档', '📄', 1)`,
+			`INSERT INTO knowledge_categories (name, icon, sort_order) VALUES ('问答', '💬', 2)`,
+			`INSERT INTO knowledge_categories (name, icon, sort_order) VALUES ('数据', '📊', 3)`,
+		} {
+			DB.Exec(s)
+		}
+	}
+
+	// 列级迁移：sessions.summary（对话摘要压缩）
+	addColumnIfMissing("sessions", "summary", "TEXT NOT NULL DEFAULT ''")
+	// 列级迁移：messages.pinned（消息置顶）
+	addColumnIfMissing("messages", "pinned", "INTEGER NOT NULL DEFAULT 0")
+	// 列级迁移：sessions.folder（会话分组）
+	addColumnIfMissing("sessions", "folder", "TEXT NOT NULL DEFAULT ''")
+	// 列级迁移：agents.post_actions（工作流后续动作）
+	addColumnIfMissing("agents", "post_actions", "TEXT NOT NULL DEFAULT '[]'")
+	// 列级迁移：sessions.is_a2a（标记 A2A 专用会话，从主会话列表中隐藏）
+	addColumnIfMissing("sessions", "is_a2a", "INTEGER NOT NULL DEFAULT 0")
+	// 列级迁移：im_connectors 多实例支持
+	addColumnIfMissing("im_connectors", "name", "TEXT NOT NULL DEFAULT ''")
+	addColumnIfMissing("im_connectors", "agent_id", "INTEGER NOT NULL DEFAULT 0")
+	// 移除旧的 platform 唯一索引（如果存在），允许同平台多实例
+	DB.Exec(`DROP INDEX IF EXISTS sqlite_autoindex_im_connectors_1`)
+
+	// 注意：a2a_conversations 的列级迁移移至 CREATE TABLE 之后执行（见下方）
+
+	// ── Project Nexus: Agent-to-Agent Communication ──────────────
+	for _, s := range []string{
+		`CREATE TABLE IF NOT EXISTS nexus_settings (
+			id          INTEGER PRIMARY KEY CHECK (id = 1),
+			visible     INTEGER NOT NULL DEFAULT 1,
+			nickname    TEXT    NOT NULL DEFAULT '',
+			listen_port INTEGER NOT NULL DEFAULT 3001
+		)`,
+		`INSERT OR IGNORE INTO nexus_settings (id, visible, nickname, listen_port) VALUES (1, 1, '', 3001)`,
+		`CREATE TABLE IF NOT EXISTS nexus_peers (
+			id           TEXT PRIMARY KEY,
+			nickname     TEXT    NOT NULL DEFAULT '',
+			host         TEXT    NOT NULL,
+			port         INTEGER NOT NULL,
+			agents_json  TEXT    NOT NULL DEFAULT '[]',
+			last_seen_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+		)`,
+		`CREATE TABLE IF NOT EXISTS nexus_contacts (
+			id            INTEGER PRIMARY KEY AUTOINCREMENT,
+			peer_id       TEXT    NOT NULL,
+			nickname      TEXT    NOT NULL DEFAULT '',
+			host          TEXT    NOT NULL,
+			port          INTEGER NOT NULL,
+			status        TEXT    NOT NULL DEFAULT 'pending',
+			shared_secret TEXT    NOT NULL DEFAULT '',
+			created_at    DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+		)`,
+		`CREATE TABLE IF NOT EXISTS agent_nexus_config (
+			agent_id             INTEGER PRIMARY KEY,
+			public               INTEGER NOT NULL DEFAULT 0,
+			public_name          TEXT    NOT NULL DEFAULT '',
+			capability_tags      TEXT    NOT NULL DEFAULT '[]',
+			auth_level           TEXT    NOT NULL DEFAULT 'readonly',
+			forbidden_info       TEXT    NOT NULL DEFAULT '',
+			public_knowledge_ids TEXT    NOT NULL DEFAULT '[]'
+		)`,
+		`CREATE TABLE IF NOT EXISTS a2a_conversations (
+			id                   INTEGER PRIMARY KEY AUTOINCREMENT,
+			local_agent_id       INTEGER NOT NULL,
+			remote_agent_name    TEXT    NOT NULL,
+			remote_peer_id       TEXT    NOT NULL,
+			remote_peer_nickname TEXT    NOT NULL DEFAULT '',
+			topic                TEXT    NOT NULL DEFAULT '',
+			goal                 TEXT    NOT NULL DEFAULT '',
+			initial_prompt       TEXT    NOT NULL DEFAULT '',
+			max_rounds           INTEGER NOT NULL DEFAULT 10,
+			current_round        INTEGER NOT NULL DEFAULT 0,
+			status               TEXT    NOT NULL DEFAULT 'active',
+			require_approval     INTEGER NOT NULL DEFAULT 1,
+			summary              TEXT    NOT NULL DEFAULT '',
+			decisions_json       TEXT    NOT NULL DEFAULT '[]',
+			initiated_by         TEXT    NOT NULL DEFAULT 'local',
+			remote_conv_id       INTEGER NOT NULL DEFAULT 0,
+			local_session_id     INTEGER NOT NULL DEFAULT 0,
+			conv_uuid            TEXT    NOT NULL DEFAULT '',
+			deadline             DATETIME DEFAULT NULL,
+			created_at           DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+			updated_at           DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+		)`,
+		`CREATE TABLE IF NOT EXISTS a2a_messages (
+			id               INTEGER PRIMARY KEY AUTOINCREMENT,
+			conversation_id  INTEGER NOT NULL,
+			sender           TEXT    NOT NULL,
+			sender_agent_name TEXT   NOT NULL DEFAULT '',
+			msg_type         TEXT    NOT NULL DEFAULT 'message',
+			content          TEXT    NOT NULL DEFAULT '',
+			structured_data  TEXT    NOT NULL DEFAULT '{}',
+			created_at       DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+		)`,
+		`CREATE INDEX IF NOT EXISTS idx_a2a_messages_conv ON a2a_messages(conversation_id)`,
+		`CREATE TABLE IF NOT EXISTS kv_store (
+			key   TEXT PRIMARY KEY,
+			value TEXT NOT NULL DEFAULT ''
+		)`,
+	} {
+		if _, err := DB.Exec(s); err != nil {
+			log.Printf("[db] nexus migrate: %v", err)
+		}
+	}
+
+	// 列级迁移：为旧版数据库补齐 a2a_conversations 缺失列
+	addColumnIfMissing("a2a_conversations", "remote_conv_id", "INTEGER NOT NULL DEFAULT 0")
+	addColumnIfMissing("a2a_conversations", "local_session_id", "INTEGER NOT NULL DEFAULT 0")
+	addColumnIfMissing("a2a_conversations", "conv_uuid", "TEXT NOT NULL DEFAULT ''")
+
+	// ── 用户表（SSO 登录 + 游客）───────────────────────────────────
+	for _, s := range []string{
+		`CREATE TABLE IF NOT EXISTS users (
+			id          INTEGER PRIMARY KEY AUTOINCREMENT,
+			provider    TEXT    NOT NULL DEFAULT 'guest',
+			provider_id TEXT    NOT NULL DEFAULT '',
+			nickname    TEXT    NOT NULL DEFAULT '游客',
+			avatar_url  TEXT    NOT NULL DEFAULT '',
+			email       TEXT    NOT NULL DEFAULT '',
+			created_at  DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+			updated_at  DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+		)`,
+		// OAuth 配置表（各平台 AppID/AppSecret）
+		`CREATE TABLE IF NOT EXISTS oauth_configs (
+			id          INTEGER PRIMARY KEY AUTOINCREMENT,
+			provider    TEXT    NOT NULL UNIQUE,
+			app_id      TEXT    NOT NULL DEFAULT '',
+			app_secret  TEXT    NOT NULL DEFAULT '',
+			extra       TEXT    NOT NULL DEFAULT '{}',
+			created_at  DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+			updated_at  DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+		)`,
+	} {
+		if _, err := DB.Exec(s); err != nil {
+			log.Printf("[db] users migrate: %v", err)
+		}
+	}
+
+	// 列级迁移：nexus_contacts.transport_type（lan/wan 传输类型）
+	addColumnIfMissing("nexus_contacts", "transport_type", "TEXT NOT NULL DEFAULT 'lan'")
+	// 列级迁移：nexus_settings 广域网相关字段
+	addColumnIfMissing("nexus_settings", "signaling_url", "TEXT NOT NULL DEFAULT ''")
+	addColumnIfMissing("nexus_settings", "wan_enabled", "INTEGER NOT NULL DEFAULT 0")
+	addColumnIfMissing("nexus_settings", "signaling_secret", "TEXT NOT NULL DEFAULT ''")
+
+	// 迁移：已有用户若 signaling_url 为空，填入默认值并启用广域网
+	DB.Exec(`UPDATE nexus_settings SET signaling_url='wss://lingxi-singaling-server.onrender.com/ws', wan_enabled=1, signaling_secret='lingxi2026' WHERE id=1 AND (signaling_url='' OR signaling_url IS NULL)`)
+
+	seedBuiltinProviders()
+	seedBuiltinAgent()
+}
+
+// seedBuiltinAgent 插入内置「通用助理」agent（id=1）
+func seedBuiltinAgent() {
+	var cnt int
+	DB.QueryRow(`SELECT COUNT(1) FROM agents WHERE builtin=1`).Scan(&cnt)
+	if cnt > 0 {
+		return
+	}
+	_, err := DB.Exec(`INSERT INTO agents (name, avatar, description, system_prompt, allow_all, builtin)
+		VALUES ('通用助理', '✦', '默认通用智能助理，开箱即用、无任何限制。', '', 1, 1)`)
+	if err != nil {
+		log.Printf("[db] seed builtin agent error: %v", err)
+	}
+}
+
+// addColumnIfMissing 检查列是否存在，不存在则 ALTER TABLE 增加
+func addColumnIfMissing(table, column, def string) {
+	rows, err := DB.Query("PRAGMA table_info(" + table + ")")
+	if err != nil {
+		log.Printf("[db] PRAGMA error on %s: %v", table, err)
+		return
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var cid int
+		var name, ctype string
+		var notnull, pk int
+		var dflt sql.NullString
+		if err := rows.Scan(&cid, &name, &ctype, &notnull, &dflt, &pk); err != nil {
+			continue
+		}
+		if name == column {
+			return
+		}
+	}
+	if _, err := DB.Exec("ALTER TABLE " + table + " ADD COLUMN " + column + " " + def); err != nil {
+		log.Printf("[db] add column %s.%s error: %v", table, column, err)
+	}
+}
+
+// seedBuiltinProviders 写入内置 provider 模板（幂等）
+func seedBuiltinProviders() {
+	type p struct{ code, name, protocol, baseURL, model, meta, doc string }
+	builtins := []p{
+		// ── Anthropic 协议（直连，不经过 bridge 路由）──────────────────
+		{
+			code: "anthropic_official", name: "Anthropic Official", protocol: "anthropic",
+			baseURL: "", model: "claude-opus-4-5", meta: `{}`, doc: "https://docs.anthropic.com",
+		},
+		{
+			code: "dashscope_anthropic", name: "DashScope (Anthropic Compatible)", protocol: "anthropic",
+			baseURL: "", model: "",
+			meta: `{"usage":{"endpoint":"https://dashscope.aliyuncs.com/api/v1/account/balance","auth_header":"Authorization","auth_prefix":"Bearer "}}`,
+			doc:  "https://help.aliyun.com/zh/model-studio/",
+		},
+		{
+			code: "deepseek_anthropic", name: "DeepSeek (Anthropic Compatible)", protocol: "anthropic",
+			baseURL: "https://api.deepseek.com/anthropic", model: "deepseek-chat",
+			meta: `{"usage":{"endpoint":"https://api.deepseek.com/user/balance","auth_header":"Authorization","auth_prefix":"Bearer "}}`,
+			doc:  "https://platform.deepseek.com/",
+		},
+		// ── OpenAI 协议（经 bridge 路由层翻译）─────────────────────────
+		{
+			code: "deepseek_openai", name: "DeepSeek (OpenAI Compatible)", protocol: "openai",
+			baseURL: "https://api.deepseek.com/v1/chat/completions", model: "deepseek-chat",
+			meta: `{"transformer":"deepseek","usage":{"endpoint":"https://api.deepseek.com/user/balance","auth_header":"Authorization","auth_prefix":"Bearer "}}`,
+			doc:  "https://platform.deepseek.com/",
+		},
+		{
+			code: "qwen_openai", name: "Qwen / DashScope (OpenAI Compatible)", protocol: "openai",
+			baseURL: "https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions", model: "qwen3-coder-plus",
+			meta: `{"transformer":"","usage":{"endpoint":"https://dashscope.aliyuncs.com/api/v1/account/balance","auth_header":"Authorization","auth_prefix":"Bearer "}}`,
+			doc:  "https://help.aliyun.com/zh/model-studio/developer-reference/use-qwen-by-calling-api",
+		},
+		{
+			code: "doubao_openai", name: "Doubao / Volcengine (OpenAI Compatible)", protocol: "openai",
+			baseURL: "https://ark.cn-beijing.volces.com/api/v3/chat/completions", model: "",
+			meta: `{"transformer":""}`,
+			doc:  "https://www.volcengine.com/docs/82379",
+		},
+		{
+			code: "glm_openai", name: "GLM / Z.ai (OpenAI Compatible)", protocol: "openai",
+			baseURL: "https://open.bigmodel.cn/api/paas/v4/chat/completions", model: "glm-4.6",
+			meta: `{"transformer":""}`,
+			doc:  "https://open.bigmodel.cn/dev/api",
+		},
+		{
+			code: "moonshot_openai", name: "Moonshot / Kimi (OpenAI Compatible)", protocol: "openai",
+			baseURL: "https://api.moonshot.cn/v1/chat/completions", model: "kimi-k2-turbo-preview",
+			meta: `{"transformer":""}`,
+			doc:  "https://platform.moonshot.cn/docs",
+		},
+		{
+			code: "gemini_openai", name: "Google Gemini (OpenAI Compatible)", protocol: "openai",
+			baseURL: "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions", model: "gemini-2.5-pro",
+			meta: `{"transformer":"gemini"}`,
+			doc:  "https://ai.google.dev/gemini-api/docs/openai",
+		},
+		{
+			code: "openrouter_openai", name: "OpenRouter (OpenAI Compatible)", protocol: "openai",
+			baseURL: "https://openrouter.ai/api/v1/chat/completions", model: "google/gemini-2.5-pro",
+			meta: `{"transformer":""}`,
+			doc:  "https://openrouter.ai/docs",
+		},
+		{
+			code: "groq_openai", name: "Groq (OpenAI Compatible)", protocol: "openai",
+			baseURL: "https://api.groq.com/openai/v1/chat/completions", model: "llama-3.3-70b-versatile",
+			meta: `{"transformer":""}`,
+			doc:  "https://console.groq.com/docs",
+		},
+		{
+			code: "siliconflow_openai", name: "SiliconFlow (OpenAI Compatible)", protocol: "openai",
+			baseURL: "https://api.siliconflow.cn/v1/chat/completions", model: "deepseek-ai/DeepSeek-V3",
+			meta: `{"transformer":""}`,
+			doc:  "https://docs.siliconflow.cn/",
+		},
+		{
+			code: "ollama_openai", name: "Ollama (本地, OpenAI Compatible)", protocol: "openai",
+			baseURL: "http://127.0.0.1:11434/v1/chat/completions", model: "qwen2.5-coder:14b",
+			meta: `{"transformer":""}`,
+			doc:  "https://github.com/ollama/ollama",
+		},
+		{
+			code: "openai_official", name: "OpenAI Official", protocol: "openai",
+			baseURL: "https://api.openai.com/v1/chat/completions", model: "gpt-4o",
+			meta: `{"transformer":""}`,
+			doc:  "https://platform.openai.com/docs",
+		},
+		// ── 通用 ────────────────────────────────────────────────────
+		{
+			code: "custom_anthropic", name: "Custom (Anthropic)", protocol: "anthropic",
+			baseURL: "", model: "", meta: `{}`, doc: "",
+		},
+		{
+			code: "custom_openai", name: "Custom (OpenAI)", protocol: "openai",
+			baseURL: "", model: "", meta: `{}`, doc: "",
+		},
+	}
+	for _, b := range builtins {
+		_, err := DB.Exec(`
+			INSERT INTO providers (code, name, protocol, default_base_url, default_model, usage_api_meta, doc_url, builtin)
+			VALUES (?,?,?,?,?,?,?,1)
+			ON CONFLICT(code) DO UPDATE SET
+				name=excluded.name,
+				protocol=excluded.protocol,
+				default_base_url=excluded.default_base_url,
+				default_model=excluded.default_model,
+				usage_api_meta=excluded.usage_api_meta,
+				doc_url=excluded.doc_url,
+				builtin=1
+		`, b.code, b.name, b.protocol, b.baseURL, b.model, b.meta, b.doc)
+		if err != nil {
+			log.Printf("[db] seed provider %s error: %v", b.code, err)
+		}
+	}
+}
+
+// ─── Tasks ───────────────────────────────────────────────────────
+
+func CreateTask(sessionID int64, title string) (int64, error) {
+	res, err := DB.Exec(
+		`INSERT INTO tasks (session_id, title) VALUES (?,?)`,
+		sessionID, title,
+	)
+	if err != nil {
+		return 0, err
+	}
+	return res.LastInsertId()
+}
+
+func UpdateTaskStatus(id int64, status string) {
+	DB.Exec(`UPDATE tasks SET status=?, updated_at=CURRENT_TIMESTAMP WHERE id=?`, status, id)
+}
+
+func UpdateTaskProgress(id int64, progress string) {
+	DB.Exec(`UPDATE tasks SET progress=?, updated_at=CURRENT_TIMESTAMP WHERE id=?`, progress, id)
+}
+
+func ListTasks(sessionID int64) ([]map[string]interface{}, error) {
+	var rows *sql.Rows
+	var err error
+	if sessionID > 0 {
+		rows, err = DB.Query(
+			`SELECT id, session_id, title, status, progress, created_at, updated_at
+			 FROM tasks WHERE session_id=? ORDER BY created_at DESC`,
+			sessionID,
+		)
+	} else {
+		rows, err = DB.Query(
+			`SELECT id, session_id, title, status, progress, created_at, updated_at
+			 FROM tasks ORDER BY created_at DESC LIMIT 50`,
+		)
+	}
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	result := make([]map[string]interface{}, 0)
+	for rows.Next() {
+		var id, sid int64
+		var title, status, progress string
+		var createdAt, updatedAt time.Time
+		if err := rows.Scan(&id, &sid, &title, &status, &progress, &createdAt, &updatedAt); err != nil {
+			continue
+		}
+		result = append(result, map[string]interface{}{
+			"id":         id,
+			"session_id": sid,
+			"title":      title,
+			"status":     status,
+			"progress":   progress,
+			"created_at": createdAt,
+			"updated_at": updatedAt,
+		})
+	}
+	return result, nil
+}
+
+func DeleteTask(id int64) {
+	DB.Exec(`DELETE FROM tasks WHERE id=?`, id)
+}
+
+// ─── Pending Tasks ───────────────────────────────────────────────
+
+func SavePendingTask(sessionID int64, taskDesc, missingFields string) {
+	DB.Exec(`
+		INSERT INTO pending_tasks (session_id, task_desc, missing_fields)
+		VALUES (?,?,?)
+		ON CONFLICT(session_id) DO UPDATE SET
+			task_desc=excluded.task_desc,
+			missing_fields=excluded.missing_fields,
+			updated_at=CURRENT_TIMESTAMP
+	`, sessionID, taskDesc, missingFields)
+}
+
+func GetPendingTask(sessionID int64) (taskDesc, missingFields string, found bool) {
+	err := DB.QueryRow(
+		`SELECT task_desc, missing_fields FROM pending_tasks WHERE session_id=?`,
+		sessionID,
+	).Scan(&taskDesc, &missingFields)
+	if err != nil {
+		return "", "", false
+	}
+	return taskDesc, missingFields, true
+}
+
+func ClearPendingTask(sessionID int64) {
+	DB.Exec(`DELETE FROM pending_tasks WHERE session_id=?`, sessionID)
+}
+
+// ─── Knowledge ───────────────────────────────────────────────────
+
+func InsertKnowledge(title, filePath, category, tags, summary string, size int64) (int64, error) {
+	res, err := DB.Exec(
+		`INSERT INTO knowledge (title, file_path, category, tags, summary, size)
+		 VALUES (?,?,?,?,?,?)`,
+		title, filePath, category, tags, summary, size,
+	)
+	if err != nil {
+		return 0, err
+	}
+	return res.LastInsertId()
+}
+
+func ListKnowledge() ([]map[string]interface{}, error) {
+	rows, err := DB.Query(
+		`SELECT id, title, file_path, category, tags, summary, size, created_at
+		 FROM knowledge ORDER BY created_at DESC`,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	result := make([]map[string]interface{}, 0)
+	for rows.Next() {
+		var id, size int64
+		var title, filePath, category, tags, summary string
+		var createdAt time.Time
+		if err := rows.Scan(&id, &title, &filePath, &category, &tags, &summary, &size, &createdAt); err != nil {
+			continue
+		}
+		result = append(result, map[string]interface{}{
+			"id":         id,
+			"title":      title,
+			"file_path":  filePath,
+			"category":   category,
+			"tags":       tags,
+			"summary":    summary,
+			"size":       size,
+			"created_at": createdAt,
+		})
+	}
+	return result, nil
+}
+
+func GetKnowledgeByID(id int64) (map[string]interface{}, error) {
+	var kbID, size int64
+	var title, filePath, category, tags, summary string
+	var createdAt time.Time
+	err := DB.QueryRow(
+		`SELECT id, title, file_path, category, tags, summary, size, created_at
+		 FROM knowledge WHERE id=?`, id,
+	).Scan(&kbID, &title, &filePath, &category, &tags, &summary, &size, &createdAt)
+	if err != nil {
+		return nil, err
+	}
+	return map[string]interface{}{
+		"id":         kbID,
+		"title":      title,
+		"file_path":  filePath,
+		"category":   category,
+		"tags":       tags,
+		"summary":    summary,
+		"size":       size,
+		"created_at": createdAt,
+	}, nil
+}
+
+func DeleteKnowledge(id int64) (string, error) {
+	var filePath string
+	err := DB.QueryRow(`SELECT file_path FROM knowledge WHERE id=?`, id).Scan(&filePath)
+	if err != nil {
+		return "", err
+	}
+	DB.Exec(`DELETE FROM knowledge WHERE id=?`, id)
+	return filePath, nil
+}
+
+func UpdateKnowledge(id int64, title, category, tags, summary string) error {
+	_, err := DB.Exec(`UPDATE knowledge SET title=?, category=?, tags=?, summary=?, updated_at=CURRENT_TIMESTAMP WHERE id=?`,
+		title, category, tags, summary, id)
+	return err
+}
+
+// ─── IM Connectors ───────────────────────────────────────────────
+
+type IMConnector struct {
+	ID        int64     `json:"id"`
+	Name      string    `json:"name"`
+	Platform  string    `json:"platform"`
+	AgentID   int64     `json:"agent_id"`
+	Enabled   bool      `json:"enabled"`
+	Config    string    `json:"config"`
+	CreatedAt time.Time `json:"created_at"`
+	UpdatedAt time.Time `json:"updated_at"`
+}
+
+func UpsertIMConnector(id int64, name, platform string, agentID int64, configJSON string) (int64, error) {
+	if id > 0 {
+		_, err := DB.Exec(`UPDATE im_connectors SET name=?, platform=?, agent_id=?, config=?, updated_at=CURRENT_TIMESTAMP WHERE id=?`,
+			name, platform, agentID, configJSON, id)
+		return id, err
+	}
+	res, err := DB.Exec(`INSERT INTO im_connectors (name, platform, agent_id, config) VALUES (?,?,?,?)`,
+		name, platform, agentID, configJSON)
+	if err != nil {
+		return 0, err
+	}
+	return res.LastInsertId()
+}
+
+func SetIMConnectorEnabled(id int64, enabled bool) error {
+	v := 0
+	if enabled {
+		v = 1
+	}
+	_, err := DB.Exec(`UPDATE im_connectors SET enabled=?, updated_at=CURRENT_TIMESTAMP WHERE id=?`, v, id)
+	return err
+}
+
+func ListIMConnectors() ([]IMConnector, error) {
+	rows, err := DB.Query(`SELECT id, name, platform, agent_id, enabled, config, created_at, updated_at FROM im_connectors ORDER BY platform, id`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var result []IMConnector
+	for rows.Next() {
+		var c IMConnector
+		var enabled int
+		if err := rows.Scan(&c.ID, &c.Name, &c.Platform, &c.AgentID, &enabled, &c.Config, &c.CreatedAt, &c.UpdatedAt); err != nil {
+			continue
+		}
+		c.Enabled = enabled == 1
+		result = append(result, c)
+	}
+	return result, nil
+}
+
+func GetIMConnectorByID(id int64) (*IMConnector, error) {
+	var c IMConnector
+	var enabled int
+	err := DB.QueryRow(`SELECT id, name, platform, agent_id, enabled, config, created_at, updated_at FROM im_connectors WHERE id=?`, id).
+		Scan(&c.ID, &c.Name, &c.Platform, &c.AgentID, &enabled, &c.Config, &c.CreatedAt, &c.UpdatedAt)
+	if err != nil {
+		return nil, err
+	}
+	c.Enabled = enabled == 1
+	return &c, nil
+}
+
+func GetIMConnector(platform string) (*IMConnector, error) {
+	var c IMConnector
+	var enabled int
+	err := DB.QueryRow(`SELECT id, name, platform, agent_id, enabled, config, created_at, updated_at FROM im_connectors WHERE platform=? AND enabled=1 LIMIT 1`, platform).
+		Scan(&c.ID, &c.Name, &c.Platform, &c.AgentID, &enabled, &c.Config, &c.CreatedAt, &c.UpdatedAt)
+	if err != nil {
+		return nil, err
+	}
+	c.Enabled = enabled == 1
+	return &c, nil
+}
+
+func DeleteIMConnectorByID(id int64) error {
+	_, err := DB.Exec(`DELETE FROM im_connectors WHERE id=?`, id)
+	return err
+}
+
+func DeleteIMConnector(platform string) error {
+	_, err := DB.Exec(`DELETE FROM im_connectors WHERE platform=?`, platform)
+	return err
+}
+
+// ─── IM Sessions（群/用户 → session 映射）────────────────────────
+
+// GetOrCreateIMSession 根据 platform+scopeKey 查找有效 session。
+// ttlHours > 0 时，若 last_active 超过该时长则视为过期，自动创建新 session。
+// ttlHours == 0 表示永不过期。
+// title 用于新建 session 时的标题。
+func GetOrCreateIMSession(platform, scopeKey, title string, ttlHours int) (int64, error) {
+	var sessionID int64
+	var lastActive time.Time
+
+	err := DB.QueryRow(
+		`SELECT session_id, last_active FROM im_sessions WHERE platform=? AND scope_key=?`,
+		platform, scopeKey,
+	).Scan(&sessionID, &lastActive)
+
+	if err == nil {
+		// 找到记录，检查 TTL
+		expired := ttlHours > 0 && time.Since(lastActive) > time.Duration(ttlHours)*time.Hour
+		if !expired {
+			// 更新活跃时间
+			DB.Exec(`UPDATE im_sessions SET last_active=CURRENT_TIMESTAMP WHERE platform=? AND scope_key=?`, platform, scopeKey)
+			return sessionID, nil
+		}
+		// 已过期，创建新 session 替换旧的
+	}
+
+	// 新建 session
+	res, e := DB.Exec(`INSERT INTO sessions (title) VALUES (?)`, title)
+	if e != nil {
+		return 0, e
+	}
+	newSessionID, _ := res.LastInsertId()
+
+	_, e = DB.Exec(`
+		INSERT INTO im_sessions (platform, scope_key, session_id)
+		VALUES (?, ?, ?)
+		ON CONFLICT(platform, scope_key) DO UPDATE SET
+			session_id=excluded.session_id,
+			last_active=CURRENT_TIMESTAMP
+	`, platform, scopeKey, newSessionID)
+	if e != nil {
+		return 0, e
+	}
+	return newSessionID, nil
+}
+
+// TouchIMSession 更新 im_sessions 的 last_active（每次对话后调用）
+func TouchIMSession(platform, scopeKey string) {
+	DB.Exec(`UPDATE im_sessions SET last_active=CURRENT_TIMESTAMP WHERE platform=? AND scope_key=?`, platform, scopeKey)
+}
+
+// ─── Providers / API Profiles ────────────────────────────────────
+
+type Provider struct {
+	ID             int64  `json:"id"`
+	Code           string `json:"code"`
+	Name           string `json:"name"`
+	Protocol       string `json:"protocol"`
+	DefaultBaseURL string `json:"default_base_url"`
+	DefaultModel   string `json:"default_model"`
+	UsageAPIMeta   string `json:"usage_api_meta"`
+	DocURL         string `json:"doc_url"`
+	Builtin        bool   `json:"builtin"`
+}
+
+type APIProfile struct {
+	ID               int64     `json:"id"`
+	Name             string    `json:"name"`
+	ProviderID       int64     `json:"provider_id"`
+	ProviderCode     string    `json:"provider_code,omitempty"`
+	ProviderName     string    `json:"provider_name,omitempty"`
+	ProviderProtocol string    `json:"provider_protocol,omitempty"`
+	BaseURL          string    `json:"base_url"`
+	Model            string    `json:"model"`
+	AuthTokenCipher  string    `json:"auth_token_cipher,omitempty"` // 仅 Electron 启动时读取
+	AuthTokenMask    string    `json:"auth_token_mask"`
+	Extra            string    `json:"extra"`
+	Transformer      string    `json:"transformer"`
+	IsActive         bool      `json:"is_active"`
+	CreatedAt        time.Time `json:"created_at"`
+	UpdatedAt        time.Time `json:"updated_at"`
+}
+
+func ListProviders() ([]Provider, error) {
+	rows, err := DB.Query(`SELECT id, code, name, protocol, default_base_url, default_model, usage_api_meta, doc_url, builtin
+		FROM providers ORDER BY builtin DESC, id ASC`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := make([]Provider, 0)
+	for rows.Next() {
+		var p Provider
+		var builtin int
+		if err := rows.Scan(&p.ID, &p.Code, &p.Name, &p.Protocol, &p.DefaultBaseURL, &p.DefaultModel, &p.UsageAPIMeta, &p.DocURL, &builtin); err != nil {
+			continue
+		}
+		p.Builtin = builtin == 1
+		out = append(out, p)
+	}
+	return out, nil
+}
+
+func GetProvider(id int64) (*Provider, error) {
+	var p Provider
+	var builtin int
+	err := DB.QueryRow(`SELECT id, code, name, protocol, default_base_url, default_model, usage_api_meta, doc_url, builtin
+		FROM providers WHERE id=?`, id).
+		Scan(&p.ID, &p.Code, &p.Name, &p.Protocol, &p.DefaultBaseURL, &p.DefaultModel, &p.UsageAPIMeta, &p.DocURL, &builtin)
+	if err != nil {
+		return nil, err
+	}
+	p.Builtin = builtin == 1
+	return &p, nil
+}
+
+func ListAPIProfiles(includeCipher bool) ([]APIProfile, error) {
+	rows, err := DB.Query(`
+		SELECT p.id, p.name, p.provider_id, COALESCE(pr.code,''), COALESCE(pr.name,''), COALESCE(pr.protocol,'anthropic'),
+		       p.base_url, p.model, p.auth_token_cipher, p.auth_token_mask, p.extra, p.transformer, p.is_active, p.created_at, p.updated_at
+		FROM api_profiles p LEFT JOIN providers pr ON pr.id=p.provider_id
+		ORDER BY p.is_active DESC, p.updated_at DESC`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := make([]APIProfile, 0)
+	for rows.Next() {
+		var ap APIProfile
+		var active int
+		if err := rows.Scan(&ap.ID, &ap.Name, &ap.ProviderID, &ap.ProviderCode, &ap.ProviderName, &ap.ProviderProtocol,
+			&ap.BaseURL, &ap.Model, &ap.AuthTokenCipher, &ap.AuthTokenMask, &ap.Extra, &ap.Transformer, &active, &ap.CreatedAt, &ap.UpdatedAt); err != nil {
+			continue
+		}
+		ap.IsActive = active == 1
+		if !includeCipher {
+			ap.AuthTokenCipher = ""
+		}
+		out = append(out, ap)
+	}
+	return out, nil
+}
+
+func GetAPIProfile(id int64, includeCipher bool) (*APIProfile, error) {
+	var ap APIProfile
+	var active int
+	err := DB.QueryRow(`
+		SELECT p.id, p.name, p.provider_id, COALESCE(pr.code,''), COALESCE(pr.name,''), COALESCE(pr.protocol,'anthropic'),
+		       p.base_url, p.model, p.auth_token_cipher, p.auth_token_mask, p.extra, p.transformer, p.is_active, p.created_at, p.updated_at
+		FROM api_profiles p LEFT JOIN providers pr ON pr.id=p.provider_id
+		WHERE p.id=?`, id).
+		Scan(&ap.ID, &ap.Name, &ap.ProviderID, &ap.ProviderCode, &ap.ProviderName, &ap.ProviderProtocol,
+			&ap.BaseURL, &ap.Model, &ap.AuthTokenCipher, &ap.AuthTokenMask, &ap.Extra, &ap.Transformer, &active, &ap.CreatedAt, &ap.UpdatedAt)
+	if err != nil {
+		return nil, err
+	}
+	ap.IsActive = active == 1
+	if !includeCipher {
+		ap.AuthTokenCipher = ""
+	}
+	return &ap, nil
+}
+
+func GetActiveAPIProfile(includeCipher bool) (*APIProfile, error) {
+	var id int64
+	if err := DB.QueryRow(`SELECT id FROM api_profiles WHERE is_active=1 LIMIT 1`).Scan(&id); err != nil {
+		return nil, err
+	}
+	return GetAPIProfile(id, includeCipher)
+}
+
+func UpsertAPIProfile(ap *APIProfile) (int64, error) {
+	if ap.ID > 0 {
+		_, err := DB.Exec(`
+			UPDATE api_profiles SET
+				name=?, provider_id=?, base_url=?, model=?,
+				auth_token_cipher=?, auth_token_mask=?, extra=?, transformer=?, updated_at=CURRENT_TIMESTAMP
+			WHERE id=?`,
+			ap.Name, ap.ProviderID, ap.BaseURL, ap.Model,
+			ap.AuthTokenCipher, ap.AuthTokenMask, ap.Extra, ap.Transformer, ap.ID)
+		return ap.ID, err
+	}
+	res, err := DB.Exec(`
+		INSERT INTO api_profiles (name, provider_id, base_url, model, auth_token_cipher, auth_token_mask, extra, transformer)
+		VALUES (?,?,?,?,?,?,?,?)`,
+		ap.Name, ap.ProviderID, ap.BaseURL, ap.Model, ap.AuthTokenCipher, ap.AuthTokenMask, ap.Extra, ap.Transformer)
+	if err != nil {
+		return 0, err
+	}
+	return res.LastInsertId()
+}
+
+func DeleteAPIProfile(id int64) error {
+	_, err := DB.Exec(`DELETE FROM api_profiles WHERE id=?`, id)
+	return err
+}
+
+func ActivateAPIProfile(id int64) error {
+	tx, err := DB.Begin()
+	if err != nil {
+		return err
+	}
+	if _, err := tx.Exec(`UPDATE api_profiles SET is_active=0`); err != nil {
+		tx.Rollback()
+		return err
+	}
+	if _, err := tx.Exec(`UPDATE api_profiles SET is_active=1, updated_at=CURRENT_TIMESTAMP WHERE id=?`, id); err != nil {
+		tx.Rollback()
+		return err
+	}
+	return tx.Commit()
+}
+
+// ─── Usage ───────────────────────────────────────────────────────
+
+type UsageRecord struct {
+	ID               int64     `json:"id"`
+	SessionID        int64     `json:"session_id"`
+	MessageID        int64     `json:"message_id"`
+	ProfileID        int64     `json:"profile_id"`
+	Model            string    `json:"model"`
+	InputTokens      int64     `json:"input_tokens"`
+	OutputTokens     int64     `json:"output_tokens"`
+	CacheReadTokens  int64     `json:"cache_read_tokens"`
+	CacheWriteTokens int64     `json:"cache_write_tokens"`
+	CostUSD          float64   `json:"cost_usd"`
+	Estimated        bool      `json:"estimated"`
+	DurationMs       int64     `json:"duration_ms"`
+	CreatedAt        time.Time `json:"created_at"`
+}
+
+func InsertUsageRecord(r *UsageRecord) (int64, error) {
+	est := 0
+	if r.Estimated {
+		est = 1
+	}
+	res, err := DB.Exec(`
+		INSERT INTO usage_records
+			(session_id, message_id, profile_id, model,
+			 input_tokens, output_tokens, cache_read_tokens, cache_write_tokens,
+			 cost_usd, estimated, duration_ms)
+		VALUES (?,?,?,?,?,?,?,?,?,?,?)`,
+		r.SessionID, r.MessageID, r.ProfileID, r.Model,
+		r.InputTokens, r.OutputTokens, r.CacheReadTokens, r.CacheWriteTokens,
+		r.CostUSD, est, r.DurationMs)
+	if err != nil {
+		return 0, err
+	}
+	return res.LastInsertId()
+}
+
+// SumUsage 汇总指定时间范围内的用量
+type UsageSummary struct {
+	InputTokens      int64   `json:"input_tokens"`
+	OutputTokens     int64   `json:"output_tokens"`
+	CacheReadTokens  int64   `json:"cache_read_tokens"`
+	CacheWriteTokens int64   `json:"cache_write_tokens"`
+	CostUSD          float64 `json:"cost_usd"`
+	Requests         int64   `json:"requests"`
+}
+
+func SumUsageSince(since time.Time) (UsageSummary, error) {
+	var s UsageSummary
+	row := DB.QueryRow(`
+		SELECT COALESCE(SUM(input_tokens),0), COALESCE(SUM(output_tokens),0),
+		       COALESCE(SUM(cache_read_tokens),0), COALESCE(SUM(cache_write_tokens),0),
+		       COALESCE(SUM(cost_usd),0), COUNT(1)
+		FROM usage_records WHERE created_at >= ?`, since)
+	err := row.Scan(&s.InputTokens, &s.OutputTokens, &s.CacheReadTokens, &s.CacheWriteTokens, &s.CostUSD, &s.Requests)
+	return s, err
+}
+
+// GroupUsageByDay 返回 [{date, in, out, cost}] 升序，最近 days 天
+func GroupUsageByDay(days int) ([]map[string]interface{}, error) {
+	rows, err := DB.Query(`
+		SELECT date(created_at) AS d,
+		       COALESCE(SUM(input_tokens),0), COALESCE(SUM(output_tokens),0),
+		       COALESCE(SUM(cache_read_tokens),0), COALESCE(SUM(cache_write_tokens),0),
+		       COALESCE(SUM(cost_usd),0), COUNT(1)
+		FROM usage_records
+		WHERE created_at >= datetime('now', ?)
+		GROUP BY d ORDER BY d ASC`, "-"+strconv.Itoa(days)+" days")
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := make([]map[string]interface{}, 0)
+	for rows.Next() {
+		var d string
+		var in, outT, cr, cw, n int64
+		var cost float64
+		if err := rows.Scan(&d, &in, &outT, &cr, &cw, &cost, &n); err != nil {
+			continue
+		}
+		out = append(out, map[string]interface{}{
+			"date": d, "input_tokens": in, "output_tokens": outT,
+			"cache_read_tokens": cr, "cache_write_tokens": cw,
+			"cost_usd": cost, "requests": n,
+		})
+	}
+	return out, nil
+}
+
+// GroupUsageByModel 按模型聚合
+func GroupUsageByModel(days int) ([]map[string]interface{}, error) {
+	rows, err := DB.Query(`
+		SELECT model,
+		       COALESCE(SUM(input_tokens),0), COALESCE(SUM(output_tokens),0),
+		       COALESCE(SUM(cost_usd),0), COUNT(1)
+		FROM usage_records
+		WHERE created_at >= datetime('now', ?)
+		GROUP BY model ORDER BY 4 DESC`, "-"+strconv.Itoa(days)+" days")
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := make([]map[string]interface{}, 0)
+	for rows.Next() {
+		var model string
+		var in, outT, n int64
+		var cost float64
+		if err := rows.Scan(&model, &in, &outT, &cost, &n); err != nil {
+			continue
+		}
+		out = append(out, map[string]interface{}{
+			"model": model, "input_tokens": in, "output_tokens": outT,
+			"cost_usd": cost, "requests": n,
+		})
+	}
+	return out, nil
+}
+
+func ListRecentUsage(limit int) ([]map[string]interface{}, error) {
+	if limit <= 0 || limit > 500 {
+		limit = 100
+	}
+	rows, err := DB.Query(`
+		SELECT u.id, u.session_id, COALESCE(s.title,''), u.model, u.input_tokens, u.output_tokens,
+		       u.cache_read_tokens, u.cache_write_tokens, u.cost_usd, u.estimated, u.duration_ms, u.created_at
+		FROM usage_records u LEFT JOIN sessions s ON s.id=u.session_id
+		ORDER BY u.id DESC LIMIT ?`, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := make([]map[string]interface{}, 0)
+	for rows.Next() {
+		var id, sid, in, outT, cr, cw, est, dur int64
+		var title, model string
+		var cost float64
+		var createdAt time.Time
+		if err := rows.Scan(&id, &sid, &title, &model, &in, &outT, &cr, &cw, &cost, &est, &dur, &createdAt); err != nil {
+			continue
+		}
+		rec := map[string]interface{}{
+			"id": id, "session_id": sid, "session_title": title,
+			"model": model, "input_tokens": in, "output_tokens": outT,
+			"cache_read_tokens": cr, "cache_write_tokens": cw,
+			"cost_usd": cost, "duration_ms": dur, "created_at": createdAt,
+		}
+		if est == 1 {
+			rec["estimated"] = true
+		}
+		out = append(out, rec)
+	}
+	return out, nil
+}
+
+func SaveUsageQuotaSnapshot(profileID int64, snapshot string) {
+	DB.Exec(`
+		INSERT INTO usage_quota_cache (profile_id, snapshot)
+		VALUES (?, ?)
+		ON CONFLICT(profile_id) DO UPDATE SET
+			snapshot=excluded.snapshot,
+			fetched_at=CURRENT_TIMESTAMP`, profileID, snapshot)
+}
+
+func GetUsageQuotaCache(profileID int64) (string, time.Time, bool) {
+	var snap string
+	var t time.Time
+	err := DB.QueryRow(`SELECT snapshot, fetched_at FROM usage_quota_cache WHERE profile_id=?`, profileID).Scan(&snap, &t)
+	if err != nil {
+		return "", time.Time{}, false
+	}
+	return snap, t, true
+}
+
+// ─── Scheduled Tasks ─────────────────────────────────────────────
+
+type ScheduledTask struct {
+	ID            int64      `json:"id"`
+	Name          string     `json:"name"`
+	Prompt        string     `json:"prompt"`
+	AgentID       int64      `json:"agent_id"`
+	CronExpr      string     `json:"cron_expr"`
+	Stateful      bool       `json:"stateful"`
+	SessionID     *int64     `json:"session_id"`
+	NotifyDesktop bool       `json:"notify_desktop"`
+	Enabled       bool       `json:"enabled"`
+	LastRunAt     *time.Time `json:"last_run_at"`
+	NextRunAt     *time.Time `json:"next_run_at"`
+	RunCount      int        `json:"run_count"`
+	CreatedAt     time.Time  `json:"created_at"`
+	UpdatedAt     time.Time  `json:"updated_at"`
+}
+
+type ScheduledTaskRun struct {
+	ID         int64      `json:"id"`
+	TaskID     int64      `json:"task_id"`
+	SessionID  int64      `json:"session_id"`
+	Status     string     `json:"status"`
+	Summary    string     `json:"summary"`
+	StartedAt  time.Time  `json:"started_at"`
+	FinishedAt *time.Time `json:"finished_at"`
+}
+
+func scanScheduledTask(scanner interface{ Scan(...interface{}) error }) (*ScheduledTask, error) {
+	var t ScheduledTask
+	var stateful, notify, enabled int
+	var sessionID sql.NullInt64
+	var lastRun, nextRun sql.NullTime
+	err := scanner.Scan(&t.ID, &t.Name, &t.Prompt, &t.AgentID, &t.CronExpr,
+		&stateful, &sessionID, &notify, &enabled,
+		&lastRun, &nextRun, &t.RunCount, &t.CreatedAt, &t.UpdatedAt)
+	if err != nil {
+		return nil, err
+	}
+	t.Stateful = stateful == 1
+	t.NotifyDesktop = notify == 1
+	t.Enabled = enabled == 1
+	if sessionID.Valid {
+		v := sessionID.Int64
+		t.SessionID = &v
+	}
+	if lastRun.Valid {
+		t.LastRunAt = &lastRun.Time
+	}
+	if nextRun.Valid {
+		t.NextRunAt = &nextRun.Time
+	}
+	return &t, nil
+}
+
+const schedCols = `id, name, prompt, agent_id, cron_expr, stateful, session_id,
+	notify_desktop, enabled, last_run_at, next_run_at, run_count, created_at, updated_at`
+
+func ListScheduledTasks() ([]ScheduledTask, error) {
+	rows, err := DB.Query(`SELECT ` + schedCols + ` FROM scheduled_tasks ORDER BY created_at DESC`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := make([]ScheduledTask, 0)
+	for rows.Next() {
+		t, err := scanScheduledTask(rows)
+		if err != nil {
+			continue
+		}
+		out = append(out, *t)
+	}
+	return out, nil
+}
+
+func GetScheduledTask(id int64) (*ScheduledTask, error) {
+	return scanScheduledTask(DB.QueryRow(`SELECT `+schedCols+` FROM scheduled_tasks WHERE id=?`, id))
+}
+
+// fmtTimeForSQLite 将 time.Time 格式化为 SQLite 兼容的字符串（本地时间，无时区后缀）
+func fmtTimeForSQLite(t *time.Time) interface{} {
+	if t == nil {
+		return nil
+	}
+	return t.Local().Format("2006-01-02 15:04:05")
+}
+
+func CreateScheduledTask(t *ScheduledTask) (int64, error) {
+	stateful, notify, enabled := 0, 1, 1
+	if t.Stateful {
+		stateful = 1
+	}
+	if !t.NotifyDesktop {
+		notify = 0
+	}
+	if !t.Enabled {
+		enabled = 0
+	}
+	res, err := DB.Exec(`INSERT INTO scheduled_tasks
+		(name, prompt, agent_id, cron_expr, stateful, notify_desktop, enabled, next_run_at)
+		VALUES (?,?,?,?,?,?,?,?)`,
+		t.Name, t.Prompt, t.AgentID, t.CronExpr, stateful, notify, enabled, fmtTimeForSQLite(t.NextRunAt))
+	if err != nil {
+		return 0, err
+	}
+	return res.LastInsertId()
+}
+
+func UpdateScheduledTask(t *ScheduledTask) error {
+	stateful, notify, enabled := 0, 1, 1
+	if t.Stateful {
+		stateful = 1
+	}
+	if !t.NotifyDesktop {
+		notify = 0
+	}
+	if !t.Enabled {
+		enabled = 0
+	}
+	_, err := DB.Exec(`UPDATE scheduled_tasks SET
+		name=?, prompt=?, agent_id=?, cron_expr=?, stateful=?,
+		notify_desktop=?, enabled=?, next_run_at=?, updated_at=CURRENT_TIMESTAMP
+		WHERE id=?`,
+		t.Name, t.Prompt, t.AgentID, t.CronExpr, stateful,
+		notify, enabled, fmtTimeForSQLite(t.NextRunAt), t.ID)
+	return err
+}
+
+func DeleteScheduledTask(id int64) error {
+	DB.Exec(`DELETE FROM scheduled_task_runs WHERE task_id=?`, id)
+	_, err := DB.Exec(`DELETE FROM scheduled_tasks WHERE id=?`, id)
+	return err
+}
+
+func ToggleScheduledTask(id int64, enabled bool) error {
+	v := 0
+	if enabled {
+		v = 1
+	}
+	_, err := DB.Exec(`UPDATE scheduled_tasks SET enabled=?, updated_at=CURRENT_TIMESTAMP WHERE id=?`, v, id)
+	return err
+}
+
+func UpdateScheduledTaskAfterRun(id int64, nextRunAt *time.Time) {
+	DB.Exec(`UPDATE scheduled_tasks SET
+		last_run_at=CURRENT_TIMESTAMP, next_run_at=?, run_count=run_count+1, updated_at=CURRENT_TIMESTAMP
+		WHERE id=?`, fmtTimeForSQLite(nextRunAt), id)
+}
+
+func SetScheduledTaskSession(id, sessionID int64) {
+	DB.Exec(`UPDATE scheduled_tasks SET session_id=?, updated_at=CURRENT_TIMESTAMP WHERE id=?`, sessionID, id)
+}
+
+func GetDueScheduledTasks() ([]ScheduledTask, error) {
+	rows, err := DB.Query(`SELECT ` + schedCols + ` FROM scheduled_tasks
+		WHERE enabled=1 AND next_run_at IS NOT NULL
+		ORDER BY next_run_at ASC`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	now := time.Now()
+	out := make([]ScheduledTask, 0)
+	for rows.Next() {
+		t, err := scanScheduledTask(rows)
+		if err != nil {
+			continue
+		}
+		if t.NextRunAt != nil && !t.NextRunAt.After(now) {
+			out = append(out, *t)
+		}
+	}
+	return out, nil
+}
+
+// ─── Scheduled Task Runs ─────────────────────────────────────────
+
+func CreateScheduledTaskRun(taskID, sessionID int64) (int64, error) {
+	res, err := DB.Exec(`INSERT INTO scheduled_task_runs (task_id, session_id) VALUES (?,?)`, taskID, sessionID)
+	if err != nil {
+		return 0, err
+	}
+	return res.LastInsertId()
+}
+
+func FinishScheduledTaskRun(id int64, status, summary string) {
+	DB.Exec(`UPDATE scheduled_task_runs SET status=?, summary=?, finished_at=CURRENT_TIMESTAMP WHERE id=?`,
+		status, summary, id)
+}
+
+func ListScheduledTaskRuns(taskID int64, limit int) ([]ScheduledTaskRun, error) {
+	if limit <= 0 || limit > 200 {
+		limit = 50
+	}
+	rows, err := DB.Query(`SELECT id, task_id, session_id, status, summary, started_at, finished_at
+		FROM scheduled_task_runs WHERE task_id=? ORDER BY started_at DESC LIMIT ?`, taskID, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := make([]ScheduledTaskRun, 0)
+	for rows.Next() {
+		var r ScheduledTaskRun
+		var fin sql.NullTime
+		if err := rows.Scan(&r.ID, &r.TaskID, &r.SessionID, &r.Status, &r.Summary, &r.StartedAt, &fin); err != nil {
+			continue
+		}
+		if fin.Valid {
+			r.FinishedAt = &fin.Time
+		}
+		out = append(out, r)
+	}
+	return out, nil
+}
+
+// ─── Knowledge Categories ────────────────────────────────────────
+
+type KnowledgeCategory struct {
+	ID        int64  `json:"id"`
+	Name      string `json:"name"`
+	Icon      string `json:"icon"`
+	SortOrder int    `json:"sort_order"`
+}
+
+func ListKnowledgeCategories() ([]KnowledgeCategory, error) {
+	rows, err := DB.Query(`SELECT id, name, icon, sort_order FROM knowledge_categories ORDER BY sort_order ASC, id ASC`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := make([]KnowledgeCategory, 0)
+	for rows.Next() {
+		var c KnowledgeCategory
+		if err := rows.Scan(&c.ID, &c.Name, &c.Icon, &c.SortOrder); err != nil {
+			continue
+		}
+		out = append(out, c)
+	}
+	return out, nil
+}
+
+func CreateKnowledgeCategory(name, icon string) (int64, error) {
+	var maxOrder int
+	DB.QueryRow(`SELECT COALESCE(MAX(sort_order),0) FROM knowledge_categories`).Scan(&maxOrder)
+	res, err := DB.Exec(`INSERT INTO knowledge_categories (name, icon, sort_order) VALUES (?,?,?)`, name, icon, maxOrder+1)
+	if err != nil {
+		return 0, err
+	}
+	return res.LastInsertId()
+}
+
+func DeleteKnowledgeCategory(id int64) error {
+	_, err := DB.Exec(`DELETE FROM knowledge_categories WHERE id=?`, id)
+	return err
+}
+
+func UpdateKnowledgeCategory(id int64, name, icon string) error {
+	_, err := DB.Exec(`UPDATE knowledge_categories SET name=?, icon=? WHERE id=?`, name, icon, id)
+	return err
+}
+
+func UpdateKnowledgeItemCategory(id int64, category string) error {
+	_, err := DB.Exec(`UPDATE knowledge SET category=? WHERE id=?`, category, id)
+	return err
+}
+
+// ─── Users ───────────────────────────────────────────────────────
+
+type User struct {
+	ID         int64     `json:"id"`
+	Provider   string    `json:"provider"`
+	ProviderID string    `json:"provider_id"`
+	Nickname   string    `json:"nickname"`
+	AvatarURL  string    `json:"avatar_url"`
+	Email      string    `json:"email"`
+	CreatedAt  time.Time `json:"created_at"`
+	UpdatedAt  time.Time `json:"updated_at"`
+}
+
+func CreateUser(u *User) (int64, error) {
+	res, err := DB.Exec(`INSERT INTO users (provider, provider_id, nickname, avatar_url, email)
+		VALUES (?,?,?,?,?)`, u.Provider, u.ProviderID, u.Nickname, u.AvatarURL, u.Email)
+	if err != nil {
+		return 0, err
+	}
+	return res.LastInsertId()
+}
+
+func GetCurrentUser() (*User, error) {
+	var u User
+	err := DB.QueryRow(`SELECT id, provider, provider_id, nickname, avatar_url, email, created_at, updated_at
+		FROM users ORDER BY id DESC LIMIT 1`).
+		Scan(&u.ID, &u.Provider, &u.ProviderID, &u.Nickname, &u.AvatarURL, &u.Email, &u.CreatedAt, &u.UpdatedAt)
+	if err != nil {
+		return nil, err
+	}
+	return &u, nil
+}
+
+func GetUserByProviderID(provider, providerID string) (*User, error) {
+	var u User
+	err := DB.QueryRow(`SELECT id, provider, provider_id, nickname, avatar_url, email, created_at, updated_at
+		FROM users WHERE provider=? AND provider_id=?`, provider, providerID).
+		Scan(&u.ID, &u.Provider, &u.ProviderID, &u.Nickname, &u.AvatarURL, &u.Email, &u.CreatedAt, &u.UpdatedAt)
+	if err != nil {
+		return nil, err
+	}
+	return &u, nil
+}
+
+func UpdateUser(id int64, nickname, avatarURL, email string) error {
+	_, err := DB.Exec(`UPDATE users SET nickname=?, avatar_url=?, email=?, updated_at=CURRENT_TIMESTAMP WHERE id=?`,
+		nickname, avatarURL, email, id)
+	return err
+}
+
+func HasAnyUser() bool {
+	var cnt int
+	DB.QueryRow(`SELECT COUNT(1) FROM users`).Scan(&cnt)
+	return cnt > 0
+}
+
+func DeleteAllUsers() error {
+	_, err := DB.Exec(`DELETE FROM users`)
+	return err
+}
+
+// ─── OAuth Configs ──────────────────────────────────────────────
+
+type OAuthConfig struct {
+	ID        int64  `json:"id"`
+	Provider  string `json:"provider"`
+	AppID     string `json:"app_id"`
+	AppSecret string `json:"app_secret"`
+	Extra     string `json:"extra"`
+}
+
+func GetOAuthConfig(provider string) (*OAuthConfig, error) {
+	var c OAuthConfig
+	err := DB.QueryRow(`SELECT id, provider, app_id, app_secret, extra FROM oauth_configs WHERE provider=?`, provider).
+		Scan(&c.ID, &c.Provider, &c.AppID, &c.AppSecret, &c.Extra)
+	if err != nil {
+		return nil, err
+	}
+	return &c, nil
+}
+
+func UpsertOAuthConfig(c *OAuthConfig) error {
+	_, err := DB.Exec(`
+		INSERT INTO oauth_configs (provider, app_id, app_secret, extra)
+		VALUES (?,?,?,?)
+		ON CONFLICT(provider) DO UPDATE SET
+			app_id=excluded.app_id,
+			app_secret=excluded.app_secret,
+			extra=excluded.extra,
+			updated_at=CURRENT_TIMESTAMP
+	`, c.Provider, c.AppID, c.AppSecret, c.Extra)
+	return err
+}
+
+func ListOAuthConfigs() ([]OAuthConfig, error) {
+	rows, err := DB.Query(`SELECT id, provider, app_id, app_secret, extra FROM oauth_configs ORDER BY provider`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []OAuthConfig
+	for rows.Next() {
+		var c OAuthConfig
+		if err := rows.Scan(&c.ID, &c.Provider, &c.AppID, &c.AppSecret, &c.Extra); err != nil {
+			continue
+		}
+		out = append(out, c)
+	}
+	return out, nil
+}
+
+// SeedDingTalkOAuth 确保钉钉 OAuth 配置存在（仅在无记录时插入）
+func SeedDingTalkOAuth(clientID, clientSecret string) {
+	var cnt int
+	DB.QueryRow(`SELECT COUNT(1) FROM oauth_configs WHERE provider='dingtalk'`).Scan(&cnt)
+	if cnt > 0 {
+		return
+	}
+	UpsertOAuthConfig(&OAuthConfig{
+		Provider:  "dingtalk",
+		AppID:     clientID,
+		AppSecret: clientSecret,
+		Extra:     "{}",
+	})
+	log.Printf("[db] seeded DingTalk OAuth config")
+}
