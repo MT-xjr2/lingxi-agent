@@ -9,7 +9,7 @@
 </p>
 
 <p align="center">
-  <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue.svg" alt="MIT License" /></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-Personal%20Use-orange.svg" alt="Personal Use License" /></a>
   <img src="https://img.shields.io/badge/platform-macOS%20%7C%20Windows-lightgrey.svg" alt="Platform" />
   <img src="https://img.shields.io/badge/Electron-36-47848F.svg?logo=electron" alt="Electron" />
   <img src="https://img.shields.io/badge/React-19-61DAFB.svg?logo=react" alt="React" />
@@ -593,7 +593,9 @@ cd electron && npm install && npm start
 
 ## 📜 License
 
-[MIT License](LICENSE)
+This project is licensed under a **Personal Use and Educational License**. It is permitted for personal learning, research, and non-commercial purposes only. **Commercial use of any kind is strictly prohibited** (including but not limited to integration into commercial products, SaaS services, commercial deployment, etc.). Violations will be subject to legal action.
+
+See [LICENSE](LICENSE) for details. For commercial licensing, contact the copyright holder via GitHub.
 
 ---
 

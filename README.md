@@ -9,7 +9,7 @@
 </p>
 
 <p align="center">
-  <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue.svg" alt="MIT License" /></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-Personal%20Use-orange.svg" alt="Personal Use License" /></a>
   <img src="https://img.shields.io/badge/platform-macOS%20%7C%20Windows-lightgrey.svg" alt="Platform" />
   <img src="https://img.shields.io/badge/Electron-36-47848F.svg?logo=electron" alt="Electron" />
   <img src="https://img.shields.io/badge/React-19-61DAFB.svg?logo=react" alt="React" />
@@ -591,9 +591,11 @@ cd electron && npm install && npm start
 
 ---
 
-## 📜 开源协议
+## 📜 许可协议
 
-[MIT License](LICENSE)
+本项目采用 **个人使用与学习许可协议**，仅允许个人学习、研究和非商业用途。**严禁任何形式的商业使用**（包括但不限于集成到商业产品、SaaS 服务、商业部署等）。违反协议将依法追究法律责任。
+
+详见 [LICENSE](LICENSE)。如需商业授权，请通过 GitHub 联系版权方。
 
 ---
 

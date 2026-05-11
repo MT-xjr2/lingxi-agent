@@ -1,21 +1,131 @@
-MIT License
+Lingxi AI Agent - Personal Use License
 
-Copyright (c) 2025 Lingxi Agent Contributors
+Copyright (c) 2025-2026 Lingxi Agent Contributors. All rights reserved.
 
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
+================================================================================
+                        个人使用与学习许可协议
+              PERSONAL USE AND EDUCATIONAL LICENSE AGREEMENT
+================================================================================
 
-The above copyright notice and this permission notice shall be included in all
-copies or substantial portions of the Software.
+本许可协议（以下简称"协议"）是您（个人用户）与灵犀 AI Agent 项目版权所有者
+（以下简称"版权方"）之间关于使用本软件及相关文档（以下简称"软件"）的法律协议。
 
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-SOFTWARE.
+下载、安装、复制或以任何方式使用本软件，即表示您同意受本协议约束。如您不同意
+本协议的任何条款，请勿使用本软件。
+
+--------------------------------------------------------------------------------
+第一条  授权范围（GRANT OF LICENSE）
+--------------------------------------------------------------------------------
+
+版权方特此授予您以下非排他性、不可转让、可撤销的有限权利：
+
+1. 个人学习与研究：您可以下载、安装和运行本软件，仅用于个人学习、研究、
+   教育和非商业目的。
+
+2. 个人使用：您可以将本软件用于个人日常工作辅助，但不得以此直接或间接
+   获取商业收益。
+
+3. 代码阅读与学习：您可以阅读、研究本软件的源代码，用于提升个人技术能力。
+
+4. 非商业性修改：您可以修改本软件供个人使用，但修改后的版本同样受本协议约束。
+
+--------------------------------------------------------------------------------
+第二条  严格禁止的行为（RESTRICTIONS）
+--------------------------------------------------------------------------------
+
+未经版权方事先书面明确许可，严禁以下行为：
+
+1. 商业使用：禁止将本软件（全部或部分）用于任何商业目的，包括但不限于：
+   - 将本软件作为商业产品或服务的组成部分提供
+   - 将本软件部署于商业环境中为客户提供服务
+   - 利用本软件直接或间接获取商业收入或利润
+   - 将本软件集成到付费产品、SaaS 平台或任何收费服务中
+   - 以本软件为基础开展商业咨询、培训或技术服务
+
+2. 再分发与转授权：禁止将本软件（原版或修改版）分发、转授权、出租、出售、
+   转让给第三方用于商业目的。
+
+3. 品牌滥用：禁止使用"灵犀"、"Lingxi"名称、Logo 或相关标识进行商业宣传
+   或暗示与版权方存在商业合作关系。
+
+4. 逆向工程用于商业：禁止对本软件进行逆向工程、反编译或反汇编后将获得的
+   技术信息用于开发竞争性商业产品。
+
+5. 去除版权声明：禁止去除、修改或隐藏本软件中的任何版权声明、许可声明或
+   归属信息。
+
+--------------------------------------------------------------------------------
+第三条  知识产权（INTELLECTUAL PROPERTY）
+--------------------------------------------------------------------------------
+
+本软件的所有知识产权（包括但不限于著作权、商标权、专利权、商业秘密）均归
+版权方所有。本协议仅授予您有限的使用许可，不构成任何知识产权的转让。
+
+--------------------------------------------------------------------------------
+第四条  免责声明（DISCLAIMER）
+--------------------------------------------------------------------------------
+
+本软件按"原样"提供，不附带任何形式的明示或暗示担保，包括但不限于对适销性、
+特定用途适用性和非侵权性的担保。在任何情况下，版权方均不对因使用或无法使用
+本软件而产生的任何直接、间接、附带、特殊、惩罚性或后果性损害承担责任。
+
+--------------------------------------------------------------------------------
+第五条  法律约束与违约责任（LEGAL ENFORCEMENT）
+--------------------------------------------------------------------------------
+
+1. 法律效力：本协议构成您与版权方之间具有法律约束力的合同。
+
+2. 违约后果：任何违反本协议的行为将导致：
+   - 本协议授予的所有权利立即自动终止
+   - 您必须立即停止使用并销毁本软件的所有副本
+   - 版权方有权寻求法律救济，包括但不限于：
+     a) 申请临时禁令和永久禁令
+     b) 索赔因违约造成的全部经济损失
+     c) 索赔合理的律师费和诉讼费用
+     d) 依据《中华人民共和国著作权法》、《计算机软件保护条例》等相关
+        法律法规追究法律责任
+
+3. 管辖法律：本协议受中华人民共和国法律管辖并依其解释。因本协议引起的
+   或与本协议有关的任何争议，应提交版权方所在地有管辖权的人民法院诉讼解决。
+
+4. 可分割性：如本协议的任何条款被认定为无效或不可执行，其余条款仍然完全
+   有效。
+
+--------------------------------------------------------------------------------
+第六条  商业授权（COMMERCIAL LICENSING）
+--------------------------------------------------------------------------------
+
+如需将本软件用于商业目的，请联系版权方获取商业授权许可。商业授权的具体条款、
+费用和范围将另行协商确定。
+
+联系方式：通过 GitHub 仓库 Issues 或 Discussions 联系版权方。
+
+--------------------------------------------------------------------------------
+第七条  协议更新（AMENDMENTS）
+--------------------------------------------------------------------------------
+
+版权方保留随时修改本协议的权利。修改后的协议将在本软件仓库中发布。继续使用
+本软件即表示您接受修改后的协议。
+
+================================================================================
+
+ENGLISH SUMMARY (for international users):
+
+This software is licensed for PERSONAL USE AND EDUCATIONAL PURPOSES ONLY.
+
+COMMERCIAL USE IS STRICTLY PROHIBITED without prior written authorization
+from the copyright holder. This includes but is not limited to: selling,
+sublicensing, integrating into commercial products/services, deploying in
+commercial environments, or using the software to generate revenue directly
+or indirectly.
+
+Violation of this license may result in legal action under applicable laws,
+including injunctive relief, damages, and attorney fees.
+
+For commercial licensing inquiries, contact the copyright holder via the
+GitHub repository.
+
+================================================================================
+
+                    Copyright (c) 2025-2026 Lingxi Agent Contributors
+                              ALL RIGHTS RESERVED
