@@ -1,13 +1,17 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   Sparkles, Plus, Trash2, Edit3, Bot, Brain, BookOpen, Plug,
   ArrowLeft, Wand2, Check, X, Shield, LayoutGrid, Download, Upload, Globe,
-  Zap, History, ChevronDown, ChevronUp,
+  Zap, History, ChevronDown, ChevronUp, ImagePlus, FlaskConical,
 } from 'lucide-react';
 import { cn } from './ui/cn';
 import { api } from './api/client';
 import { Button, Input, Textarea, Select, Badge, Card, Modal } from './ui/primitives';
+import AgentAvatar from './ui/AgentAvatar';
+import DistillAgentModal from './agents/DistillAgentModal';
+import DistillRecordsPanel from './agents/DistillRecordsPanel';
+import DistillRecordPickerModal from './agents/DistillRecordPickerModal';
 
 const PROMPT_TEMPLATES = [
   { name: '销售助理', prompt: '你是经验丰富的销售助理，擅长撰写产品话术、客户跟进策略、商务邮件。语气专业、温暖、富有亲和力。' },
@@ -82,6 +86,10 @@ export default function AgentFactoryPage({ onBack }) {
   const [list, setList] = useState([]);
   const [editing, setEditing] = useState(null);
   const [showTemplates, setShowTemplates] = useState(false);
+  const [showDistill, setShowDistill] = useState(false);
+  const [showDistillRecords, setShowDistillRecords] = useState(false);
+  const [showDistillPick, setShowDistillPick] = useState(false);
+  const [redistillRecord, setRedistillRecord] = useState(null);
 
   const refresh = async () => {
     const data = await api.listAgents();
@@ -97,9 +105,68 @@ export default function AgentFactoryPage({ onBack }) {
   };
 
   const onSave = async (form) => {
-    await api.saveAgent(form);
+    const { _pendingPersonality, _importKbFiles, _distillSkillName, ...agentPayload } = form;
+    const result = await api.saveAgent(agentPayload);
+    const agentId = result?.id ?? agentPayload.id;
+    if (agentId && _pendingPersonality) {
+      try {
+        await api.saveAgentPersonality(agentId, _pendingPersonality);
+      } catch { /* 人格可选 */ }
+    }
+    if (agentId && _importKbFiles?.length) {
+      const kbIds = parseList(agentPayload.knowledge_ids);
+      for (const file of _importKbFiles) {
+        try {
+          const item = await api.uploadKnowledgeFile(file);
+          if (item?.id) kbIds.push(item.id);
+        } catch { /* 单文件失败不阻断 */ }
+      }
+      if (kbIds.length) {
+        await api.saveAgent({ ...agentPayload, id: agentId, knowledge_ids: JSON.stringify([...new Set(kbIds)]) });
+      }
+    }
+    if (agentId && _distillSkillName && !parseList(agentPayload.skill_ids).length) {
+      try {
+        const skills = await api.listSkills();
+        const sk = (skills || []).find((s) => s.name === _distillSkillName);
+        if (sk?.id) {
+          await api.saveAgent({
+            ...agentPayload,
+            id: agentId,
+            skill_ids: JSON.stringify([sk.id]),
+          });
+        }
+      } catch { /* optional */ }
+    }
     setEditing(null);
     refresh();
+  };
+
+  const handleDistillApply = (result) => {
+    setShowDistill(false);
+    setRedistillRecord(null);
+    setEditing({
+      ...EMPTY,
+      name: result.name || '',
+      avatar: result.avatar || '✦',
+      description: result.description || '',
+      system_prompt: result.system_prompt || '',
+      _pendingPersonality: result.personality,
+      _importKbFiles: result._importKbFiles,
+      _distillSkillName: result.skill_name,
+    });
+  };
+
+  const handleImportFromRecord = (result) => {
+    setShowDistillPick(false);
+    setEditing({
+      ...EMPTY,
+      name: result.name || '',
+      avatar: result.avatar || '✦',
+      description: result.description || '',
+      system_prompt: result.system_prompt || '',
+      _pendingPersonality: result.personality,
+    });
   };
 
   const createFromTemplate = (tpl) => {
@@ -180,12 +247,38 @@ export default function AgentFactoryPage({ onBack }) {
             </div>
           </div>
           <Button variant="outline" onClick={() => setShowTemplates(true)}><LayoutGrid size={14} /> 模板市场</Button>
+          <Button variant="outline" onClick={() => setShowDistillRecords(true)}><History size={14} /> 蒸馏记录</Button>
+          <Button variant="outline" onClick={() => { setRedistillRecord(null); setShowDistill(true); }}><FlaskConical size={14} /> 人格蒸馏</Button>
           <Button variant="outline" onClick={importAgent}><Upload size={14} /> 导入</Button>
           <Button onClick={() => setEditing({ ...EMPTY })}><Plus size={16} />新建智能体</Button>
         </div>
       </div>
 
       <TemplateMarket open={showTemplates} onClose={() => setShowTemplates(false)} onCreate={createFromTemplate} />
+      <DistillAgentModal
+        open={showDistill}
+        onClose={() => { setShowDistill(false); setRedistillRecord(null); }}
+        onApply={handleDistillApply}
+        initialRedistill={redistillRecord}
+      />
+      <DistillRecordsPanel
+        open={showDistillRecords}
+        onClose={() => setShowDistillRecords(false)}
+        onRedistill={(rec) => {
+          setShowDistillRecords(false);
+          setRedistillRecord(rec);
+          setShowDistill(true);
+        }}
+        onApplyToAgent={(data) => {
+          setShowDistillRecords(false);
+          handleImportFromRecord(data);
+        }}
+      />
+      <DistillRecordPickerModal
+        open={showDistillPick}
+        onClose={() => setShowDistillPick(false)}
+        onSelect={handleImportFromRecord}
+      />
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
         <AnimatePresence>
@@ -199,9 +292,7 @@ export default function AgentFactoryPage({ onBack }) {
               className="surface p-5 hover:shadow-glow transition-all hover:-translate-y-0.5 group"
             >
               <div className="flex items-start gap-3 mb-3">
-                <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-[color:var(--accent-soft)] to-transparent text-[color:var(--accent)] flex items-center justify-center text-xl shrink-0 ring-1 ring-[color:var(--accent-soft)]">
-                  {a.avatar || '✦'}
-                </div>
+                <AgentAvatar avatar={a.avatar} name={a.name} size={48} />
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2 mb-0.5">
                     <div className="font-semibold truncate">{a.name}</div>
@@ -240,6 +331,7 @@ export default function AgentFactoryPage({ onBack }) {
         value={editing}
         onClose={() => setEditing(null)}
         onSave={onSave}
+        onPickDistillRecord={() => setShowDistillPick(true)}
       />
     </div>
   );
@@ -249,9 +341,11 @@ function parseList(s) {
   try { return JSON.parse(s || '[]'); } catch { return []; }
 }
 
-function AgentEditor({ open, value, onClose, onSave }) {
+function AgentEditor({ open, value, onClose, onSave, onPickDistillRecord }) {
   const [form, setForm] = useState(value || EMPTY);
   const [step, setStep] = useState(0);
+  const [avatarUploading, setAvatarUploading] = useState(false);
+  const avatarInputRef = useRef(null);
   const [profiles, setProfiles] = useState([]);
   const [skills, setSkills] = useState([]);
   const [mcps, setMcps] = useState([]);
@@ -370,7 +464,49 @@ function AgentEditor({ open, value, onClose, onSave }) {
         {step === 0 && (
           <div className="grid grid-cols-[1fr_220px] gap-6">
             <div className="space-y-4">
+              <Button
+                variant="outline"
+                size="sm"
+                className="w-full justify-center"
+                onClick={() => onPickDistillRecord?.()}
+              >
+                <FlaskConical size={14} /> 从蒸馏记录导入人物特征
+              </Button>
               <Field label="头像">
+                <div className="flex items-center gap-3 mb-2">
+                  <AgentAvatar avatar={form.avatar} name={form.name} size={56} />
+                  <div className="flex flex-col gap-1">
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      disabled={avatarUploading}
+                      onClick={() => avatarInputRef.current?.click()}
+                    >
+                      {avatarUploading ? '上传中…' : <><ImagePlus size={14} /> 上传图片</>}
+                    </Button>
+                    <input
+                      ref={avatarInputRef}
+                      type="file"
+                      accept="image/*"
+                      className="hidden"
+                      onChange={async (e) => {
+                        const file = e.target.files?.[0];
+                        if (!file) return;
+                        setAvatarUploading(true);
+                        try {
+                          const { url } = await api.uploadAgentAvatar(file);
+                          set('avatar', url);
+                        } catch (err) {
+                          alert(err.message || '上传失败');
+                        } finally {
+                          setAvatarUploading(false);
+                          e.target.value = '';
+                        }
+                      }}
+                    />
+                    <span className="text-[10px] text-[color:var(--text-faint)]">或选择 emoji</span>
+                  </div>
+                </div>
                 <div className="flex flex-wrap gap-1.5">
                   {EMOJIS.map((e) => (
                     <button key={e} onClick={() => set('avatar', e)} className={cn(
@@ -393,9 +529,7 @@ function AgentEditor({ open, value, onClose, onSave }) {
               <div className="text-xs text-[color:var(--text-faint)] mb-2">预览</div>
               <div className="surface p-4 space-y-3">
                 <div className="flex items-center gap-3">
-                  <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-[color:var(--accent-soft)] to-transparent text-[color:var(--accent)] flex items-center justify-center text-xl ring-1 ring-[color:var(--accent-soft)]">
-                    {form.avatar || '✦'}
-                  </div>
+                  <AgentAvatar avatar={form.avatar} name={form.name} size={48} />
                   <div>
                     <div className="font-semibold text-sm">{form.name || '未命名'}</div>
                     <div className="text-xs text-[color:var(--text-faint)] line-clamp-2">{form.description || '暂无简介'}</div>
@@ -450,6 +584,12 @@ function AgentEditor({ open, value, onClose, onSave }) {
                 </div>
               </Field>
             </div>
+            {form.id > 0 && <PersonalityEditor agentId={form.id} />}
+            {!form.id && (
+              <div className="text-[11px] text-[color:var(--text-faint)] p-2 rounded bg-[color:var(--bg-soft)]">
+                提示：保存智能体后可在编辑界面配置"群聊人格"（发言概率、兴趣、安静时段等）。
+              </div>
+            )}
           </div>
         )}
 
@@ -558,6 +698,174 @@ function Field({ label, children }) {
     <div>
       <div className="text-xs text-[color:var(--text-soft)] mb-1">{label}</div>
       {children}
+    </div>
+  );
+}
+
+function ChipInput({ value, onChange, placeholder }) {
+  const arr = (() => { try { const a = JSON.parse(value || '[]'); return Array.isArray(a) ? a : []; } catch { return []; } })();
+  const [input, setInput] = useState('');
+  const add = () => {
+    const v = input.trim();
+    if (!v) return;
+    if (arr.includes(v)) { setInput(''); return; }
+    onChange(JSON.stringify([...arr, v]));
+    setInput('');
+  };
+  const remove = (i) => {
+    const next = [...arr];
+    next.splice(i, 1);
+    onChange(JSON.stringify(next));
+  };
+  return (
+    <div>
+      <div className="flex flex-wrap gap-1 mb-1.5">
+        {arr.map((tag, i) => (
+          <span key={i} className="text-xs px-2 py-0.5 rounded-full bg-[color:var(--accent-soft)] text-[color:var(--accent)] inline-flex items-center gap-1">
+            {tag}
+            <button onClick={() => remove(i)} className="hover:opacity-70">
+              <X size={10} />
+            </button>
+          </span>
+        ))}
+      </div>
+      <div className="flex gap-1">
+        <Input value={input} onChange={(e) => setInput(e.target.value)}
+          onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); add(); } }}
+          placeholder={placeholder} />
+        <Button size="sm" variant="outline" onClick={add}><Plus size={12} /> 添加</Button>
+      </div>
+    </div>
+  );
+}
+
+function PersonalityEditor({ agentId }) {
+  const [loaded, setLoaded] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [expanded, setExpanded] = useState(false);
+  const [p, setP] = useState({
+    tags: '[]', interests: '[]',
+    speak_probability: 35, min_delay_ms: 1500, max_delay_ms: 5000,
+    emoji_freq: 'medium', quiet_start: '', quiet_end: '',
+    typo_rate: 1, echo_rate: 2, ghost_minutes: 0,
+    cold_start_eligible: true, style_hint: '',
+  });
+
+  useEffect(() => {
+    if (!agentId || loaded) return;
+    api.getAgentPersonality(agentId).then((d) => {
+      if (d) setP({ ...p, ...d });
+      setLoaded(true);
+    }).catch(() => setLoaded(true));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [agentId]);
+
+  const set = (k, v) => setP((f) => ({ ...f, [k]: v }));
+
+  const save = async () => {
+    setSaving(true);
+    try {
+      await api.saveAgentPersonality(agentId, p);
+    } catch (e) {
+      alert(e?.message || '保存失败');
+    }
+    setSaving(false);
+  };
+
+  return (
+    <div className="rounded-lg border border-[color:var(--line)] bg-[color:var(--bg-soft)]/40">
+      <button
+        type="button"
+        onClick={() => setExpanded((v) => !v)}
+        className="w-full px-3 py-2 flex items-center justify-between text-sm font-medium"
+      >
+        <span className="inline-flex items-center gap-1.5">
+          <Brain size={13} className="text-[color:var(--accent)]" />
+          群聊人格（决定 Agent 在群里的发言行为）
+        </span>
+        {expanded ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+      </button>
+      {expanded && (
+        <div className="px-3 pb-3 space-y-3">
+          <div className="grid grid-cols-2 gap-3">
+            <Field label="性格标签">
+              <ChipInput value={p.tags} onChange={(v) => set('tags', v)} placeholder="例：佛系、捧场王" />
+            </Field>
+            <Field label="兴趣领域（命中关键词会更想发言）">
+              <ChipInput value={p.interests} onChange={(v) => set('interests', v)} placeholder="例：前端、咖啡" />
+            </Field>
+          </div>
+          <Field label={`基础发言概率：${p.speak_probability}%（被 @ 或感兴趣时会自动加分）`}>
+            <input
+              type="range" min={0} max={100} step={5}
+              value={p.speak_probability}
+              onChange={(e) => set('speak_probability', parseInt(e.target.value))}
+              className="w-full accent-[color:var(--accent)]"
+            />
+            <div className="flex justify-between text-[10px] text-[color:var(--text-faint)]">
+              <span>潜水党</span><span>话痨</span>
+            </div>
+          </Field>
+          <div className="grid grid-cols-2 gap-3">
+            <Field label={`最小思考延迟: ${p.min_delay_ms} ms`}>
+              <Input type="number" min={0} step={100} value={p.min_delay_ms}
+                onChange={(e) => set('min_delay_ms', Math.max(0, parseInt(e.target.value) || 0))} />
+            </Field>
+            <Field label={`最大思考延迟: ${p.max_delay_ms} ms`}>
+              <Input type="number" min={0} step={100} value={p.max_delay_ms}
+                onChange={(e) => set('max_delay_ms', Math.max(0, parseInt(e.target.value) || 0))} />
+            </Field>
+          </div>
+          <div className="grid grid-cols-3 gap-3">
+            <Field label="安静时段开始（HH:MM）">
+              <Input value={p.quiet_start || ''} onChange={(e) => set('quiet_start', e.target.value)} placeholder="23:00" />
+            </Field>
+            <Field label="安静时段结束（HH:MM）">
+              <Input value={p.quiet_end || ''} onChange={(e) => set('quiet_end', e.target.value)} placeholder="07:00" />
+            </Field>
+            <Field label="表情使用频率">
+              <Select value={p.emoji_freq} onChange={(e) => set('emoji_freq', e.target.value)}>
+                <option value="low">低</option>
+                <option value="medium">中</option>
+                <option value="high">高</option>
+              </Select>
+            </Field>
+          </div>
+          <div className="grid grid-cols-3 gap-3">
+            <Field label={`错别字率 ${p.typo_rate}%`}>
+              <Input type="number" min={0} max={20} value={p.typo_rate}
+                onChange={(e) => set('typo_rate', Math.max(0, Math.min(20, parseInt(e.target.value) || 0)))} />
+            </Field>
+            <Field label={`复读率 ${p.echo_rate}%`}>
+              <Input type="number" min={0} max={20} value={p.echo_rate}
+                onChange={(e) => set('echo_rate', Math.max(0, Math.min(20, parseInt(e.target.value) || 0)))} />
+            </Field>
+            <Field label="被怼后冷静（分钟）">
+              <Input type="number" min={0} max={120} value={p.ghost_minutes}
+                onChange={(e) => set('ghost_minutes', Math.max(0, parseInt(e.target.value) || 0))} />
+            </Field>
+          </div>
+          <label className="flex items-center gap-2 text-sm p-2 rounded-md bg-[color:var(--bg-soft)]">
+            <input type="checkbox" checked={!!p.cold_start_eligible}
+              onChange={(e) => set('cold_start_eligible', e.target.checked)} />
+            <span>允许"冷场救场"（5 分钟无人说话时自动冒泡）</span>
+          </label>
+          <Field label="额外说话风格提示（可选）">
+            <Textarea
+              className="min-h-[60px]"
+              value={p.style_hint || ''}
+              maxLength={300}
+              onChange={(e) => set('style_hint', e.target.value)}
+              placeholder="例：经常用东北话；说话喜欢带「老铁」；对加班话题有强烈共鸣…"
+            />
+          </Field>
+          <div className="flex items-center justify-end gap-2">
+            <Button onClick={save} disabled={saving} size="sm">
+              {saving ? '保存中…' : '保存人格'}
+            </Button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

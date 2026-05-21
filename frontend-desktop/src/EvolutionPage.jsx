@@ -147,6 +147,9 @@ export default function EvolutionPage() {
         </div>
       )}
 
+      {/* 后台进化扫描器配置 */}
+      <ScannerConfigCard />
+
       {/* Stats Cards */}
       {stats && stats.total > 0 && (
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
@@ -443,5 +446,111 @@ function MiniChart({ data }) {
         </div>
       ))}
     </div>
+  );
+}
+
+// 后台进化扫描器配置面板
+function ScannerConfigCard() {
+  const [cfg, setCfg] = useState(null);
+  const [saving, setSaving] = useState(false);
+  const evoActivity = useStore((s) => s.evolutionActivity || []);
+  const lastScan = evoActivity.find((a) => a.phase === 'scan_done' || a.phase === 'scan_start');
+
+  useEffect(() => {
+    api.getEvolutionScannerConfig().then(setCfg).catch(() => {});
+  }, []);
+
+  if (!cfg) return null;
+
+  const save = async (patch) => {
+    const merged = { ...cfg, ...patch };
+    setCfg(merged);
+    setSaving(true);
+    try {
+      await api.updateEvolutionScannerConfig(merged);
+    } catch {}
+    setSaving(false);
+  };
+
+  return (
+    <Card className="p-4">
+      <div className="flex items-center justify-between mb-3">
+        <div className="flex items-center gap-2">
+          <Clock size={14} className="text-[color:var(--accent)]" />
+          <span className="text-sm font-semibold">后台自动进化</span>
+          {cfg.enabled ? (
+            <Badge tone="success">已启用</Badge>
+          ) : (
+            <Badge tone="default">已暂停</Badge>
+          )}
+          {saving && <Loader2 size={12} className="animate-spin text-[color:var(--text-faint)]" />}
+        </div>
+        <label className="flex items-center gap-2 cursor-pointer">
+          <span className="text-xs text-[color:var(--text-soft)]">启用</span>
+          <input
+            type="checkbox"
+            checked={cfg.enabled}
+            onChange={(e) => save({ enabled: e.target.checked })}
+            className="accent-[var(--accent)]"
+          />
+        </label>
+      </div>
+      <p className="text-xs text-[color:var(--text-faint)] mb-3">
+        系统会定期巡检所有开启进化的 Agent，自动从有价值的对话中提炼记忆与知识，无需手动点击。
+      </p>
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs">
+        <div>
+          <div className="text-[color:var(--text-faint)] mb-1">扫描周期（小时）</div>
+          <input
+            type="number" min={1} max={48}
+            value={cfg.scan_interval_hours}
+            onChange={(e) => save({ scan_interval_hours: parseInt(e.target.value) || 6 })}
+            className="w-full px-2 py-1 rounded border border-[color:var(--line)] bg-[color:var(--bg-elev)]"
+          />
+        </div>
+        <div>
+          <div className="text-[color:var(--text-faint)] mb-1">最少消息数</div>
+          <input
+            type="number" min={2} max={50}
+            value={cfg.min_session_messages}
+            onChange={(e) => save({ min_session_messages: parseInt(e.target.value) || 10 })}
+            className="w-full px-2 py-1 rounded border border-[color:var(--line)] bg-[color:var(--bg-elev)]"
+          />
+        </div>
+        <div>
+          <div className="text-[color:var(--text-faint)] mb-1">冷却时间（小时）</div>
+          <input
+            type="number" min={1} max={168}
+            value={cfg.cooldown_hours}
+            onChange={(e) => save({ cooldown_hours: parseInt(e.target.value) || 24 })}
+            className="w-full px-2 py-1 rounded border border-[color:var(--line)] bg-[color:var(--bg-elev)]"
+          />
+        </div>
+        <div>
+          <div className="text-[color:var(--text-faint)] mb-1">安静时段（开始-结束）</div>
+          <div className="flex gap-1 items-center">
+            <input
+              type="number" min={-1} max={23}
+              value={cfg.quiet_start}
+              onChange={(e) => save({ quiet_start: parseInt(e.target.value) })}
+              className="w-1/2 px-2 py-1 rounded border border-[color:var(--line)] bg-[color:var(--bg-elev)]"
+            />
+            <span>-</span>
+            <input
+              type="number" min={-1} max={23}
+              value={cfg.quiet_end}
+              onChange={(e) => save({ quiet_end: parseInt(e.target.value) })}
+              className="w-1/2 px-2 py-1 rounded border border-[color:var(--line)] bg-[color:var(--bg-elev)]"
+            />
+          </div>
+        </div>
+      </div>
+      {lastScan && (
+        <div className="mt-3 text-[11px] text-[color:var(--text-faint)] pt-2 border-t border-[color:var(--line)]">
+          最近一次巡检：{lastScan.message || lastScan.phase}
+          {typeof lastScan.dispatched === 'number' && ` · 触发 ${lastScan.dispatched} 次进化`}
+        </div>
+      )}
+    </Card>
   );
 }

@@ -1,10 +1,11 @@
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, useCallback } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   BookOpen, Upload, Trash2, Eye, Loader2, CheckCircle2, AlertCircle,
   FileText, MessageCircle, BarChart3, X, FolderUp, Pencil, CheckSquare, Square, Plus, Settings2,
+  Search, Database, FolderSync, RefreshCw, Zap,
 } from 'lucide-react';
 import { Button, Card, Badge, Modal, Input, Select, Textarea, EmptyState, SkeletonCard } from './ui/primitives';
 import { cn } from './ui/cn';
@@ -219,6 +220,8 @@ export default function KnowledgePage() {
         {[
           { id: 'list', label: `文件列表${items.length ? ` (${items.length})` : ''}`, icon: BookOpen },
           { id: 'upload', label: '上传文件', icon: Upload },
+          { id: 'search', label: '语义搜索', icon: Search },
+          { id: 'index', label: '索引与监控', icon: Database },
         ].map(t => {
           const Icon = t.icon;
           return (
@@ -400,6 +403,9 @@ export default function KnowledgePage() {
         </div>
       )}
 
+      {activeTab === 'search' && <SemanticSearchPanel />}
+      {activeTab === 'index' && <IndexManagementPanel />}
+
       <PreviewModal item={previewItem} onClose={() => setPreviewItem(null)} />
       <EditKnowledgeModal item={editItem} onClose={() => setEditItem(null)} onSaved={() => { setEditItem(null); fetchItems(); }} categories={categories} onChangeCategory={updateItemCategory} />
 
@@ -490,6 +496,235 @@ function PreviewModal({ item, onClose }) {
         </div>
       )}
     </Modal>
+  );
+}
+
+// ─── 语义搜索面板 ───────────────────────────────────────────────
+function SemanticSearchPanel() {
+  const [query, setQuery] = useState('');
+  const [results, setResults] = useState([]);
+  const [searching, setSearching] = useState(false);
+  const [searched, setSearched] = useState(false);
+
+  const handleSearch = async () => {
+    if (!query.trim()) return;
+    setSearching(true);
+    setSearched(true);
+    try {
+      const res = await fetch(`/api/knowledge/search?q=${encodeURIComponent(query)}&limit=10`);
+      const data = await res.json();
+      setResults(data.results || []);
+    } catch { setResults([]); }
+    finally { setSearching(false); }
+  };
+
+  return (
+    <div className="space-y-4">
+      <Card className="p-4">
+        <div className="flex items-center gap-2 mb-3">
+          <Search size={16} className="text-[color:var(--accent)]" />
+          <span className="text-sm font-medium">向量语义搜索</span>
+          <Badge variant="outline" className="text-xs">深度 RAG</Badge>
+        </div>
+        <p className="text-xs text-[color:var(--text-soft)] mb-3">
+          语义搜索能理解问题意图，而非仅匹配关键词。输入自然语言问题即可搜索知识库。
+        </p>
+        <div className="flex gap-2">
+          <Input
+            className="flex-1"
+            placeholder="输入问题，如：如何部署服务到生产环境"
+            value={query}
+            onChange={e => setQuery(e.target.value)}
+            onKeyDown={e => e.key === 'Enter' && handleSearch()}
+          />
+          <Button onClick={handleSearch} disabled={searching || !query.trim()}>
+            {searching ? <Loader2 size={14} className="animate-spin" /> : <Search size={14} />}
+            搜索
+          </Button>
+        </div>
+      </Card>
+
+      {searched && (
+        <div className="space-y-2">
+          {results.length === 0 ? (
+            <div className="text-center py-8 text-[color:var(--text-faint)] text-sm">
+              {searching ? '搜索中...' : '未找到相关结果，请尝试换一种表述'}
+            </div>
+          ) : (
+            results.map((r, i) => (
+              <Card key={r.chunk_id || i} className="p-3 hover:shadow-soft transition">
+                <div className="flex items-center gap-2 mb-1.5">
+                  <Badge variant={r.source === 'hybrid' ? 'default' : 'outline'} className="text-xs">
+                    {r.source === 'vector' ? '语义匹配' : r.source === 'keyword' ? '关键词' : '混合匹配'}
+                  </Badge>
+                  <span className="text-xs text-[color:var(--text-faint)] truncate flex-1">{r.file_path}</span>
+                  <span className="text-xs text-[color:var(--accent)]">
+                    {(r.score * 100).toFixed(1)}%
+                  </span>
+                </div>
+                <p className="text-sm text-[color:var(--text)] leading-relaxed line-clamp-4">{r.chunk_text}</p>
+              </Card>
+            ))
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── 索引管理面板 ───────────────────────────────────────────────
+function IndexManagementPanel() {
+  const [indexStatus, setIndexStatus] = useState(null);
+  const [watchedDirs, setWatchedDirs] = useState([]);
+  const [embeddingConfig, setEmbeddingCfg] = useState(null);
+  const [newDir, setNewDir] = useState('');
+  const [reindexing, setReindexing] = useState(false);
+
+  const fetchAll = useCallback(() => {
+    fetch('/api/knowledge/index-status').then(r => r.json()).then(setIndexStatus).catch(() => {});
+    fetch('/api/knowledge/watched-dirs').then(r => r.json()).then(d => setWatchedDirs(Array.isArray(d) ? d : [])).catch(() => {});
+    fetch('/api/knowledge/embedding-config').then(r => r.json()).then(setEmbeddingCfg).catch(() => {});
+  }, []);
+
+  useEffect(() => { fetchAll(); const t = setInterval(fetchAll, 5000); return () => clearInterval(t); }, [fetchAll]);
+
+  const handleReindex = async () => {
+    setReindexing(true);
+    await fetch('/api/knowledge/reindex', { method: 'POST' }).catch(() => {});
+    setTimeout(fetchAll, 1000);
+    setTimeout(() => setReindexing(false), 2000);
+  };
+
+  const handleAddDir = async () => {
+    if (!newDir.trim()) return;
+    await fetch('/api/knowledge/watched-dirs', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ dir_path: newDir.trim() }),
+    });
+    setNewDir('');
+    fetchAll();
+  };
+
+  const handleRemoveDir = async (id) => {
+    await fetch(`/api/knowledge/watched-dirs/${id}`, { method: 'DELETE' });
+    fetchAll();
+  };
+
+  const handleSaveEmbedding = async (cfg) => {
+    await fetch('/api/knowledge/embedding-config', {
+      method: 'PUT', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(cfg),
+    });
+    fetchAll();
+  };
+
+  return (
+    <div className="space-y-4">
+      {/* 索引状态 */}
+      <Card className="p-4">
+        <div className="flex items-center gap-2 mb-3">
+          <Database size={16} className="text-[color:var(--accent)]" />
+          <span className="text-sm font-medium">向量索引状态</span>
+          <Button size="sm" variant="ghost" onClick={handleReindex} disabled={reindexing || indexStatus?.is_indexing}>
+            <RefreshCw size={12} className={reindexing || indexStatus?.is_indexing ? 'animate-spin' : ''} />
+            重建索引
+          </Button>
+        </div>
+        {indexStatus && (
+          <div className="grid grid-cols-3 gap-3">
+            <div className="p-3 rounded-lg bg-[color:var(--bg-soft)] text-center">
+              <div className="text-lg font-bold text-[color:var(--accent)]">{indexStatus.total_docs}</div>
+              <div className="text-xs text-[color:var(--text-soft)]">已索引文档</div>
+            </div>
+            <div className="p-3 rounded-lg bg-[color:var(--bg-soft)] text-center">
+              <div className="text-lg font-bold text-[color:var(--accent)]">{indexStatus.total_chunks}</div>
+              <div className="text-xs text-[color:var(--text-soft)]">文本分块</div>
+            </div>
+            <div className="p-3 rounded-lg bg-[color:var(--bg-soft)] text-center">
+              <div className="text-xs font-medium text-[color:var(--text)]">{indexStatus.last_updated || '—'}</div>
+              <div className="text-xs text-[color:var(--text-soft)]">最后更新</div>
+            </div>
+          </div>
+        )}
+        {indexStatus?.is_indexing && (
+          <div className="mt-3">
+            <div className="flex items-center gap-2 text-xs text-[color:var(--accent)] mb-1">
+              <Loader2 size={12} className="animate-spin" /> 正在索引...
+            </div>
+            <div className="h-1.5 rounded-full bg-[color:var(--bg-soft)] overflow-hidden">
+              <div className="h-full bg-[color:var(--accent)] rounded-full transition-all" style={{ width: `${(indexStatus.progress || 0) * 100}%` }} />
+            </div>
+          </div>
+        )}
+      </Card>
+
+      {/* 监控目录 */}
+      <Card className="p-4">
+        <div className="flex items-center gap-2 mb-3">
+          <FolderSync size={16} className="text-[color:var(--accent)]" />
+          <span className="text-sm font-medium">文件夹监控</span>
+          <span className="text-xs text-[color:var(--text-faint)]">文件变化时自动更新索引</span>
+        </div>
+
+        {watchedDirs.length > 0 && (
+          <div className="space-y-2 mb-3">
+            {watchedDirs.map(d => (
+              <div key={d.id} className="flex items-center gap-2 px-3 py-2 rounded-lg bg-[color:var(--bg-soft)]">
+                <FolderSync size={14} className="text-[color:var(--accent)] shrink-0" />
+                <span className="text-xs text-[color:var(--text)] truncate flex-1">{d.dir_path}</span>
+                <Button size="sm" variant="ghost" onClick={() => handleRemoveDir(d.id)}>
+                  <Trash2 size={12} />
+                </Button>
+              </div>
+            ))}
+          </div>
+        )}
+
+        <div className="flex gap-2">
+          <Input
+            className="flex-1"
+            placeholder="输入文件夹绝对路径，如 /Users/you/Documents/项目文档"
+            value={newDir}
+            onChange={e => setNewDir(e.target.value)}
+            onKeyDown={e => e.key === 'Enter' && handleAddDir()}
+          />
+          <Button onClick={handleAddDir} disabled={!newDir.trim()}>
+            <Plus size={14} /> 添加
+          </Button>
+        </div>
+      </Card>
+
+      {/* 嵌入模型配置 */}
+      <Card className="p-4">
+        <div className="flex items-center gap-2 mb-3">
+          <Zap size={16} className="text-[color:var(--accent)]" />
+          <span className="text-sm font-medium">嵌入模型配置</span>
+        </div>
+        {embeddingConfig && (
+          <div className="space-y-3">
+            <div>
+              <label className="block text-xs text-[color:var(--text-soft)] mb-1">嵌入 API 地址（留空则使用当前模型供应商）</label>
+              <Input
+                value={embeddingConfig.api_url}
+                onChange={e => setEmbeddingCfg({ ...embeddingConfig, api_url: e.target.value })}
+                placeholder="https://api.openai.com/v1"
+              />
+            </div>
+            <div>
+              <label className="block text-xs text-[color:var(--text-soft)] mb-1">嵌入模型名称</label>
+              <Input
+                value={embeddingConfig.model}
+                onChange={e => setEmbeddingCfg({ ...embeddingConfig, model: e.target.value })}
+                placeholder="text-embedding-3-small"
+              />
+            </div>
+            <Button size="sm" onClick={() => handleSaveEmbedding(embeddingConfig)}>
+              <CheckCircle2 size={14} /> 保存配置
+            </Button>
+          </div>
+        )}
+      </Card>
+    </div>
   );
 }
 

@@ -2,13 +2,16 @@ import { useState, useEffect, useCallback, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   Search, Users, MessageSquare, RefreshCw, Sparkles, Wifi,
-  Check, X, Globe, Radio, Radar, Send, Trash2,
+  Check, X, Globe, Radio, Radar, Send, Trash2, UsersRound, Plus,
 } from 'lucide-react';
 import { api, wsClient } from '../api/client';
-import { Button, Card, Badge } from '../ui/primitives';
+import { useStore } from '../state/useStore';
+import { Button, Card, Badge, Select } from '../ui/primitives';
 import { cn } from '../ui/cn';
 import A2AConversationView, { StatusBadge } from './A2AConversationView';
 import StartA2AModal from './StartA2AModal';
+import GroupChatView from './GroupChatView';
+import CreateGroupModal from './CreateGroupModal';
 
 /* ─── 左侧边栏列表项组件 ──────────────────────────────────────── */
 
@@ -238,6 +241,16 @@ export default function NexusPage() {
   const [startModalOpen, setStartModalOpen] = useState(false);
   const [selectedPeer, setSelectedPeer] = useState(null);
 
+  // 群聊
+  const [tab, setTab] = useState('a2a'); // 'a2a' | 'group'
+  const [createGroupOpen, setCreateGroupOpen] = useState(false);
+  const groupChats = useStore((s) => s.groupChats);
+  const refreshGroupChats = useStore((s) => s.refreshGroupChats);
+  const groupInvites = useStore((s) => s.groupInvites);
+  const popGroupInvite = useStore((s) => s.popGroupInvite);
+  const [acceptingGroupId, setAcceptingGroupId] = useState(null);
+  const [groupAcceptAgentIds, setGroupAcceptAgentIds] = useState([]);
+
   // ─── 数据加载 ─────────────────────────────────────────────────
   const refreshPeers = useCallback(async () => {
     setPeersLoading(true);
@@ -262,12 +275,14 @@ export default function NexusPage() {
     refreshConversations();
     refreshWANStatus();
     refreshWANPeers();
+    refreshGroupChats();
     api.listAgents().then(setAgentList).catch(() => {});
     const t1 = setInterval(refreshPeers, 15000);
     const t2 = setInterval(refreshConversations, 5000);
     const t3 = setInterval(refreshWANPeers, 20000);
-    return () => { clearInterval(t1); clearInterval(t2); clearInterval(t3); };
-  }, [refreshPeers, refreshConversations, refreshWANPeers, refreshWANStatus]);
+    const t4 = setInterval(refreshGroupChats, 8000);
+    return () => { clearInterval(t1); clearInterval(t2); clearInterval(t3); clearInterval(t4); };
+  }, [refreshPeers, refreshConversations, refreshWANPeers, refreshWANStatus, refreshGroupChats]);
 
   // ─── WebSocket 事件 ────────────────────────────────────────────
   useEffect(() => {
@@ -380,10 +395,168 @@ export default function NexusPage() {
               <Radar size={15} />
             </button>
           </div>
+          {/* tab 切换 */}
+          <div className="flex bg-[color:var(--bg-soft)] rounded-lg p-0.5 text-[11px] font-medium">
+            <button
+              onClick={() => setTab('a2a')}
+              className={cn(
+                'flex-1 h-7 rounded-md transition flex items-center justify-center gap-1',
+                tab === 'a2a' ? 'bg-[color:var(--bg-elev)] text-[color:var(--text)] shadow-sm' : 'text-[color:var(--text-faint)]'
+              )}
+            >
+              <MessageSquare size={11} /> 一对一
+            </button>
+            <button
+              onClick={() => setTab('group')}
+              className={cn(
+                'flex-1 h-7 rounded-md transition flex items-center justify-center gap-1',
+                tab === 'group' ? 'bg-[color:var(--bg-elev)] text-[color:var(--text)] shadow-sm' : 'text-[color:var(--text-faint)]'
+              )}
+            >
+              <UsersRound size={11} /> 群聊 {groupChats.length > 0 && <span className="ml-0.5 text-[color:var(--accent)]">·{groupChats.length}</span>}
+            </button>
+          </div>
         </div>
 
         {/* 列表区域 */}
         <div className="flex-1 overflow-auto scrollable py-2">
+          {tab === 'group' && (
+            <div>
+              <div className="px-3 mb-2">
+                <Button size="sm" className="w-full" onClick={() => setCreateGroupOpen(true)}>
+                  <Plus size={13} /> 创建群聊
+                </Button>
+              </div>
+              {/* 待处理群聊邀请 */}
+              {groupInvites.length > 0 && (
+                <div className="mb-2">
+                  <div className="px-4 py-1 text-[10px] font-semibold text-red-500 uppercase tracking-wider flex items-center gap-1.5">
+                    <div className="w-1.5 h-1.5 rounded-full bg-red-500 animate-pulse" />
+                    群聊邀请 ({groupInvites.length})
+                  </div>
+                  {groupInvites.map((invite) => (
+                    <div key={invite.room_id} className="px-3 py-2.5 mx-2 mb-1 rounded-lg bg-purple-50/80 dark:bg-purple-900/20 border border-purple-200/60 dark:border-purple-700/40">
+                      <div className="flex items-center gap-2 mb-1.5">
+                        <UsersRound size={14} className="text-purple-600 dark:text-purple-400" />
+                        <span className="text-xs font-medium truncate flex-1">{invite.topic || '群聊邀请'}</span>
+                      </div>
+                      <div className="text-[10px] text-[color:var(--text-faint)] mb-2">{invite.host_nickname} 邀请你加入</div>
+                      {acceptingGroupId === invite.room_id ? (
+                        <div className="space-y-1.5">
+                          <Select
+                            value=""
+                            onChange={(e) => {
+                              const id = parseInt(e.target.value);
+                              if (id && !groupAcceptAgentIds.includes(id)) {
+                                setGroupAcceptAgentIds([...groupAcceptAgentIds, id]);
+                              }
+                            }}
+                            className="!h-7 !text-[10px]"
+                          >
+                            <option value="">+ 选择本端 Agent</option>
+                            {agentList.filter((a) => !groupAcceptAgentIds.includes(a.id)).map((a) => (
+                              <option key={a.id} value={a.id}>{a.name}</option>
+                            ))}
+                          </Select>
+                          <div className="flex flex-wrap gap-1">
+                            {groupAcceptAgentIds.map((id) => {
+                              const a = agentList.find((x) => x.id === id);
+                              return (
+                                <span key={id} className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded bg-purple-200/50 text-[10px]">
+                                  {a?.name} <button onClick={() => setGroupAcceptAgentIds(groupAcceptAgentIds.filter((x) => x !== id))}><X size={9} /></button>
+                                </span>
+                              );
+                            })}
+                          </div>
+                          <div className="flex gap-1.5">
+                            <button
+                              onClick={async () => {
+                                if (groupAcceptAgentIds.length === 0) return;
+                                await api.acceptGroupInvite(invite.room_id, groupAcceptAgentIds);
+                                popGroupInvite(invite.room_id);
+                                setAcceptingGroupId(null);
+                                setGroupAcceptAgentIds([]);
+                                refreshGroupChats();
+                                setSelected({ type: 'group', id: invite.room_id });
+                              }}
+                              disabled={groupAcceptAgentIds.length === 0}
+                              className="flex-1 h-6 rounded bg-emerald-500 text-white text-[10px] disabled:opacity-40"
+                            >
+                              确认加入
+                            </button>
+                            <button
+                              onClick={() => { setAcceptingGroupId(null); setGroupAcceptAgentIds([]); }}
+                              className="flex-1 h-6 rounded bg-gray-200 dark:bg-gray-700 text-[color:var(--text-faint)] text-[10px]"
+                            >取消</button>
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="flex gap-1.5">
+                          <button
+                            onClick={() => { setAcceptingGroupId(invite.room_id); setGroupAcceptAgentIds([]); }}
+                            className="h-6 px-2 rounded bg-emerald-500 text-white text-[10px] font-medium flex items-center gap-1"
+                          >
+                            <Check size={10} /> 接受
+                          </button>
+                          <button
+                            onClick={async () => { await api.rejectGroupInvite(invite.room_id); popGroupInvite(invite.room_id); refreshGroupChats(); }}
+                            className="h-6 px-2 rounded bg-gray-200 dark:bg-gray-700 text-[color:var(--text-faint)] text-[10px] flex items-center gap-1"
+                          >
+                            <X size={10} /> 拒绝
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
+              {groupChats.length === 0 && groupInvites.length === 0 ? (
+                <div className="text-center py-12 px-4">
+                  <UsersRound size={24} className="mx-auto text-[color:var(--text-faint)] mb-2 opacity-40" />
+                  <p className="text-xs text-[color:var(--text-faint)]">还没有群聊</p>
+                  <p className="text-[10px] text-[color:var(--text-faint)] mt-1">点击「创建群聊」拉本端和远端 Agent 一起聊</p>
+                </div>
+              ) : (
+                <div className="mb-2">
+                  <div className="px-4 py-1 text-[10px] font-semibold text-[color:var(--text-faint)] uppercase tracking-wider">
+                    群聊 ({groupChats.length})
+                  </div>
+                  {groupChats.map((g) => (
+                    <div
+                      key={g.id}
+                      onClick={() => setSelected({ type: 'group', id: g.id })}
+                      className={cn(
+                        'mx-2 mb-1 px-3 py-2.5 rounded-lg cursor-pointer flex items-center gap-3 transition',
+                        selected?.type === 'group' && selected?.id === g.id
+                          ? 'bg-[color:var(--accent-soft)] border-l-2 border-[color:var(--accent)]'
+                          : 'hover:bg-[color:var(--bg-soft)] border-l-2 border-transparent'
+                      )}
+                    >
+                      <div className={cn(
+                        'w-10 h-10 rounded-xl flex items-center justify-center shrink-0',
+                        g.status === 'active'
+                          ? 'bg-emerald-100 dark:bg-emerald-900/30 text-emerald-600'
+                          : 'bg-[color:var(--bg-soft)] text-[color:var(--text-faint)]'
+                      )}>
+                        <UsersRound size={18} />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2">
+                          <span className="text-xs font-medium truncate">{g.topic || '群聊'}</span>
+                          <StatusBadge status={g.status} />
+                        </div>
+                        <div className="text-[10px] text-[color:var(--text-faint)] truncate mt-0.5">
+                          {g.created_by_local ? '群主' : '成员'}
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
+          {tab === 'a2a' && (<>
           {/* 待处理对话邀请 */}
           <AnimatePresence>
             {pendingConvs.length > 0 && (
@@ -454,6 +627,7 @@ export default function NexusPage() {
               <p className="text-[10px] text-[color:var(--text-faint)] mt-1">点击右上角「发现」找到在线节点并发起对话</p>
             </div>
           )}
+          </>)}
         </div>
 
         {/* 底部状态栏 */}
@@ -482,6 +656,8 @@ export default function NexusPage() {
           />
         ) : selected?.type === 'conv' ? (
           <A2AConversationView convId={selected.id} onBack={() => setSelected(null)} />
+        ) : selected?.type === 'group' ? (
+          <GroupChatView roomId={selected.id} onBack={() => setSelected(null)} />
         ) : (
           <EmptyMainPanel />
         )}
@@ -492,6 +668,16 @@ export default function NexusPage() {
         onClose={() => { setStartModalOpen(false); refreshConversations(); }}
         peer={selectedPeer}
         onCreated={(convId) => { refreshConversations(); setSelected({ type: 'conv', id: convId }); }}
+      />
+
+      <CreateGroupModal
+        open={createGroupOpen}
+        onClose={() => setCreateGroupOpen(false)}
+        onCreated={(roomId) => {
+          refreshGroupChats();
+          if (roomId) setSelected({ type: 'group', id: roomId });
+          setTab('group');
+        }}
       />
     </div>
   );

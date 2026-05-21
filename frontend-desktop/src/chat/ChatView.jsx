@@ -1,10 +1,12 @@
 import { useEffect, useMemo, useState } from 'react';
+import { AnimatePresence } from 'framer-motion';
 import { Bot, BookOpen, Brain, Cpu, Plug, Search, Download, Zap, Dna, Undo2, X } from 'lucide-react';
 import { parseAssistantContent } from './blockUtils';
 import { useStore } from '../state/useStore';
 import { MessageList } from './MessageList';
 import { Composer } from './Composer';
 import { SearchModal } from './SearchModal';
+import { ScreenAgentPanel } from './ScreenAgentPanel';
 import { Badge } from '../ui/primitives';
 import { api } from '../api/client';
 import { cn } from '../ui/cn';
@@ -50,7 +52,12 @@ export function ChatView() {
           </div>
         </div>
       )}
-      <Composer useKB={useKB} setUseKB={setUseKB} />
+      <div className="relative">
+        <AnimatePresence>
+          <ScreenAgentPanel />
+        </AnimatePresence>
+        <Composer useKB={useKB} setUseKB={setUseKB} />
+      </div>
       <SearchModal open={searchOpen} onClose={() => setSearchOpen(false)} />
     </div>
   );

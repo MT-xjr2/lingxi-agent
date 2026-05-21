@@ -26,4 +26,37 @@ contextBridge.exposeInMainWorld('electronAPI', {
   // ─── 桌面通知 ──────────────────────────────────────────────
   showNotification: (title, body) => ipcRenderer.invoke('show-notification', title, body),
 
+  // ─── 剪贴板智能监控 ──────────────────────────────────────
+  onClipboardSuggestion: (callback) => {
+    ipcRenderer.on('clipboard-suggestion', (_e, data) => callback(data));
+    return () => ipcRenderer.removeAllListeners('clipboard-suggestion');
+  },
+  clipboardMonitorToggle: (enabled) => ipcRenderer.invoke('clipboard-monitor-toggle', enabled),
+  clipboardMonitorStatus: () => ipcRenderer.invoke('clipboard-monitor-status'),
+
+  // ─── Screen Agent ─────────────────────────────────────────
+  screenAgent: {
+    capture: (region) => ipcRenderer.invoke('screen-agent-capture', region),
+    getContext: () => ipcRenderer.invoke('screen-agent-context'),
+    executeAction: (action) => ipcRenderer.invoke('screen-agent-execute', action),
+    executeBatch: (actions, stepDelay) => ipcRenderer.invoke('screen-agent-execute-batch', actions, stepDelay),
+    abort: () => ipcRenderer.invoke('screen-agent-abort'),
+    reset: () => ipcRenderer.invoke('screen-agent-reset'),
+    onEmergencyAbort: (callback) => {
+      ipcRenderer.on('screen-agent-emergency-abort', () => callback());
+      return () => ipcRenderer.removeAllListeners('screen-agent-emergency-abort');
+    },
+  },
+
+  // ─── Spotlight 悬浮窗 ──────────────────────────────────────
+  showSpotlight: () => ipcRenderer.invoke('show-spotlight'),
+  hideSpotlight: () => ipcRenderer.invoke('hide-spotlight'),
+  resizeSpotlight: (height) => ipcRenderer.invoke('resize-spotlight', height),
+  getActiveContext: () => ipcRenderer.invoke('get-active-context'),
+  spotlightGetPort: () => ipcRenderer.invoke('spotlight-get-port'),
+  onSpotlightContext: (callback) => {
+    ipcRenderer.on('spotlight-context', (_e, data) => callback(data));
+    return () => ipcRenderer.removeAllListeners('spotlight-context');
+  },
+
 });

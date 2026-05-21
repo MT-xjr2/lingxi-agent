@@ -61,9 +61,25 @@ done
 echo ""
 echo "▶ [2/5] 构建前端..."
 cd "$FRONTEND_DIR"
+
+# 强制使用 Node 22（Vite 8 要求 ≥20.19 或 ≥22.12）
+if [ -d "/tmp/node22/bin" ]; then
+  export PATH="/tmp/node22/bin:$PATH"
+  echo "  ✓ 使用 Node 22 (Vite 8 兼容)"
+else
+  echo "  ⚠️  未找到 /tmp/node22，使用系统 Node"
+fi
+
 npm install --silent
 npm run build
 echo "  ✓ 前端构建完成: $(du -sh "$FRONTEND_DIR/dist" | cut -f1)"
+
+# dot-skill 内置（可选，失败不阻断构建）
+if [ -x "$ROOT_DIR/scripts/fetch-dot-skill.sh" ]; then
+  echo ""
+  echo "▶ [2b] 拉取 dot-skill 内置技能..."
+  bash "$ROOT_DIR/scripts/fetch-dot-skill.sh" || echo "  ⚠️  dot-skill 拉取失败，可在应用内一键安装"
+fi
 
 # ── 3. 准备内置 AI 引擎 ──────────────────────────────────────────
 echo ""
@@ -96,19 +112,28 @@ else
   chmod +x "$CLAUDE_CODE_DIR/cli.js"
   echo "  ✓ cli.js 已复制"
 
-  # 创建包装脚本 lingxi，使用内置 node 运行 cli.js（不依赖系统 node）
-  cat > "$CLAUDE_CODE_DIR/lingxi" << 'WRAPPER_EOF'
+  # 检测 cli.js 的实际类型，创建正确的包装脚本
+  CLI_FILE_TYPE="$(file -b "$CLAUDE_CODE_DIR/cli.js" 2>/dev/null || echo 'unknown')"
+  if echo "$CLI_FILE_TYPE" | grep -q "Mach-O\|executable\|ELF"; then
+    # cli.js 是原生二进制（SEA 或编译产物），直接执行
+    cat > "$CLAUDE_CODE_DIR/lingxi" << 'WRAPPER_EOF'
 #!/bin/bash
-# 包装脚本：使用内置 node 运行 AI 引擎，不依赖系统 node
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+exec "$SCRIPT_DIR/cli.js" "$@"
+WRAPPER_EOF
+    echo "  ✓ 创建了包装脚本 lingxi（原生二进制模式）"
+  else
+    # cli.js 是 JavaScript 文件，通过内置 node 运行
+    cat > "$CLAUDE_CODE_DIR/lingxi" << 'WRAPPER_EOF'
+#!/bin/bash
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 NODE_BIN="$SCRIPT_DIR/../node-bin/node"
 CLI_JS="$SCRIPT_DIR/cli.js"
-
-# 确保使用内置 node，而不是系统 PATH 中的 node
 exec "$NODE_BIN" "$CLI_JS" "$@"
 WRAPPER_EOF
+    echo "  ✓ 创建了包装脚本 lingxi（Node.js 模式）"
+  fi
   chmod +x "$CLAUDE_CODE_DIR/lingxi"
-  echo "  ✓ 创建了包装脚本 lingxi（使用内置 node，不依赖系统环境）"
 
   # 复制引擎 node_modules（AI 引擎依赖）
   if [ -d "$CLAUDE_PKG_DIR/node_modules" ]; then

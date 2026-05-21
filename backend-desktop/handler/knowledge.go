@@ -15,6 +15,7 @@ import (
 	pdf "github.com/ledongthuc/pdf"
 	"github.com/nguyenthenguyen/docx"
 	"lingxi-agent/db"
+	"lingxi-agent/vectordb"
 )
 
 // knowledgeDir 返回知识库根目录（$HOME/knowledge/）
@@ -299,6 +300,9 @@ func UploadKnowledge(c *gin.Context) {
 	// 重建索引
 	rebuildIndex()
 
+	// 异步向量索引
+	go vectordb.IndexSingleFile(knowledgeDir(), id, relPath)
+
 	c.JSON(http.StatusOK, gin.H{
 		"id":        id,
 		"title":     title,
@@ -366,6 +370,9 @@ func DeleteKnowledge(c *gin.Context) {
 
 	// 重建索引
 	rebuildIndex()
+
+	// 删除向量索引
+	go vectordb.DeleteChunksByKnowledge(id)
 
 	c.JSON(http.StatusOK, gin.H{"message": "已删除"})
 }

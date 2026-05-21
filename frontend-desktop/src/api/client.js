@@ -83,6 +83,30 @@ export const api = {
   getAgent: (id) => req('GET', `/api/agents/${id}`),
   saveAgent: (a) => req('POST', '/api/agents', a),
   deleteAgent: (id) => req('DELETE', `/api/agents/${id}`),
+  uploadAgentAvatar: async (file) => {
+    const form = new FormData();
+    form.append('file', file);
+    const res = await fetch('/api/agents/upload-avatar', { method: 'POST', credentials: 'include', body: form });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || '上传失败');
+    return data;
+  },
+  getDistillStatus: () => req('GET', '/api/agents/distill/status'),
+  installDotSkill: () => req('POST', '/api/skills/install-github'),
+  applyDistillResult: (body) => req('POST', '/api/agents/distill/apply', body),
+  listDistillRecords: () => req('GET', '/api/agents/distill/records'),
+  getDistillRecord: (id) => req('GET', `/api/agents/distill/records/${id}`),
+  deleteDistillRecord: (id) => req('DELETE', `/api/agents/distill/records/${id}`),
+  applyDistillRecord: (id) => req('POST', `/api/agents/distill/records/${id}/apply`),
+  distillRecordFileUrl: (id, relPath) => `/api/agents/distill/records/${id}/files/${relPath}`,
+  uploadKnowledgeFile: async (file) => {
+    const form = new FormData();
+    form.append('file', file);
+    const res = await fetch('/api/knowledge', { method: 'POST', credentials: 'include', body: form });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || '知识库上传失败');
+    return data;
+  },
 
   // usage
   getUsage: (range = '7d') => req('GET', `/api/usage?range=${range}`),
@@ -142,6 +166,40 @@ export const api = {
   getAgentNexusConfig: (id) => req('GET', `/api/agents/${id}/nexus-config`),
   updateAgentNexusConfig: (id, data) => req('PUT', `/api/agents/${id}/nexus-config`, data),
 
+  // ── 群聊 ────────────────────────────────────────────────────────
+  listGroupChats: () => req('GET', '/api/group-chats'),
+  getGroupChat: (id) => req('GET', `/api/group-chats/${id}`),
+  createGroupChat: (data) => req('POST', '/api/group-chats', data),
+  postGroupMessage: (id, payload) => {
+    // 兼容旧用法：传入字符串视为 content
+    const body = typeof payload === 'string' ? { content: payload } : (payload || {});
+    return req('POST', `/api/group-chats/${id}/post`, body);
+  },
+  listGroupMessagesPaged: (id, before, limit = 30) =>
+    req('GET', `/api/group-chats/${id}/messages?before=${before || 0}&limit=${limit}`),
+  recallGroupMessage: (id, msgId) => req('POST', `/api/group-chats/${id}/messages/${msgId}/recall`),
+  leaveGroupChat: (id) => req('POST', `/api/group-chats/${id}/leave`),
+  pauseGroupChat: (id) => req('POST', `/api/group-chats/${id}/pause`),
+  resumeGroupChat: (id) => req('POST', `/api/group-chats/${id}/resume`),
+  terminateGroupChat: (id) => req('POST', `/api/group-chats/${id}/terminate`),
+  acceptGroupInvite: (id, localAgentIds) => req('POST', `/api/group-chats/${id}/accept`, { local_agent_ids: localAgentIds }),
+  rejectGroupInvite: (id) => req('POST', `/api/group-chats/${id}/reject`),
+  deleteGroupChat: (id) => req('DELETE', `/api/group-chats/${id}`),
+  uploadGroupImage: async (file) => {
+    const form = new FormData();
+    form.append('file', file);
+    const res = await fetch('/api/group-chats/upload', { method: 'POST', body: form, credentials: 'include' });
+    if (!res.ok) {
+      const text = await res.text().catch(() => '');
+      throw new Error(`HTTP ${res.status}: ${text}`);
+    }
+    return res.json();
+  },
+
+  // ── Agent 群聊人格 ─────────────────────────────────────────
+  getAgentPersonality: (id) => req('GET', `/api/agents/${id}/personality`),
+  saveAgentPersonality: (id, data) => req('PUT', `/api/agents/${id}/personality`, data),
+
   // ── 自我进化 ─────────────────────────────────────────────────
   getEvolutionConfig: (id) => req('GET', `/api/agents/${id}/evolution`),
   setEvolutionConfig: (id, enabled) => req('PUT', `/api/agents/${id}/evolution`, { enabled }),
@@ -152,6 +210,8 @@ export const api = {
   manualExtract: (id, data) => req('POST', `/api/agents/${id}/evolution/extract`, data),
   listAllEvolutionLogs: (limit = 100, offset = 0) => req('GET', `/api/evolution/logs?limit=${limit}&offset=${offset}`),
   getEvolutionStats: () => req('GET', '/api/evolution/stats'),
+  getEvolutionScannerConfig: () => req('GET', '/api/evolution/scanner-config'),
+  updateEvolutionScannerConfig: (cfg) => req('PUT', '/api/evolution/scanner-config', cfg),
 
   // ── 数据备份 ─────────────────────────────────────────────────
   exportBackup: () => `${BASE}/api/backup/export`,
@@ -163,6 +223,19 @@ export const api = {
   // ── WAN (广域网) ──────────────────────────────────────────────
   listWANPeers: () => req('GET', '/api/wan/peers'),
   getWANStatus: () => req('GET', '/api/wan/status'),
+
+  // ── Screen Agent ─────────────────────────────────────────────
+  screenAgentAnalyze: (data) => req('POST', '/api/screen-agent/analyze', data),
+  screenAgentPlan: (data) => req('POST', '/api/screen-agent/plan', data),
+  screenAgentStep: (data) => req('POST', '/api/screen-agent/step', data),
+  screenAgentStepResult: (data) => req('POST', '/api/screen-agent/step-result', data),
+  screenAgentAbort: (sessionId) => req('POST', '/api/screen-agent/abort', { session_id: sessionId }),
+  screenAgentReset: (sessionId) => req('POST', '/api/screen-agent/reset', { session_id: sessionId }),
+  screenAgentExecutePlan: (data) => req('POST', '/api/screen-agent/execute-plan', data),
+  screenAgentConfirm: (data) => req('POST', '/api/screen-agent/confirm', data),
+  listScreenActions: (sessionId, limit = 50) => req('GET', `/api/screen-agent/actions?session_id=${sessionId}&limit=${limit}`),
+  getAgentScreenConfig: (id) => req('GET', `/api/agents/${id}/screen-config`),
+  setAgentScreenConfig: (id, data) => req('PUT', `/api/agents/${id}/screen-config`, data),
 };
 
 // ─── WebSocket ────────────────────────────────────────────────────

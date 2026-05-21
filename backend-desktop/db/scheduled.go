@@ -5,11 +5,13 @@ import (
 	"time"
 )
 
+// fmtTimeForSQLite 将 *time.Time 序列化为 UTC 文本，与 SQLite CURRENT_TIMESTAMP 一致
+// 读取时 ncruces/go-sqlite3 默认按 UTC 解析回 time.Time，统一时区避免偏移
 func fmtTimeForSQLite(t *time.Time) interface{} {
 	if t == nil {
 		return nil
 	}
-	return t.Local().Format("2006-01-02 15:04:05")
+	return t.UTC().Format("2006-01-02 15:04:05")
 }
 
 // ─── Scheduled Tasks ─────────────────────────────────────────────
@@ -60,10 +62,12 @@ func scanScheduledTask(scanner interface{ Scan(...interface{}) error }) (*Schedu
 		t.SessionID = &v
 	}
 	if lastRun.Valid {
-		t.LastRunAt = &lastRun.Time
+		v := lastRun.Time.Local()
+		t.LastRunAt = &v
 	}
 	if nextRun.Valid {
-		t.NextRunAt = &nextRun.Time
+		v := nextRun.Time.Local()
+		t.NextRunAt = &v
 	}
 	return &t, nil
 }
@@ -152,6 +156,12 @@ func UpdateScheduledTaskAfterRun(id int64, nextRunAt *time.Time) {
 	DB.Exec(`UPDATE scheduled_tasks SET
 		last_run_at=CURRENT_TIMESTAMP, next_run_at=?, run_count=run_count+1, updated_at=CURRENT_TIMESTAMP
 		WHERE id=?`, fmtTimeForSQLite(nextRunAt), id)
+}
+
+// SetScheduledTaskNextRun 仅更新 next_run_at（启动自检/重新设置使用，不变更 last_run_at 与 run_count）
+func SetScheduledTaskNextRun(id int64, nextRunAt *time.Time) {
+	DB.Exec(`UPDATE scheduled_tasks SET next_run_at=?, updated_at=CURRENT_TIMESTAMP WHERE id=?`,
+		fmtTimeForSQLite(nextRunAt), id)
 }
 
 func SetScheduledTaskSession(id, sessionID int64) {

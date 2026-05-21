@@ -461,6 +461,12 @@ func migrate() {
 	// 迁移：已有用户若 signaling_url 为空，填入默认值并启用广域网
 	DB.Exec(`UPDATE nexus_settings SET signaling_url='wss://lingxi-singaling-server.onrender.com/ws', wan_enabled=1, signaling_secret='lingxi2026' WHERE id=1 AND (signaling_url='' OR signaling_url IS NULL)`)
 
+	// ── 群聊（Project Nexus 群聊）────────────────────────────────
+	MigrateGroupChat()
+
+	// ── 群聊 Agent 人格 ──────────────────────────────────────────
+	MigrateAgentPersonality()
+
 	seedBuiltinProviders()
 	seedBuiltinAgent()
 
@@ -497,6 +503,52 @@ func migrate() {
 		addColumnIfMissing("evolution_logs", "raw_llm_response", "TEXT NOT NULL DEFAULT ''")
 		addColumnIfMissing("evolution_logs", "steps_json", "TEXT NOT NULL DEFAULT '[]'")
 		recordMigration(3, "evolution_logs – status/raw_llm_response/steps_json columns for visibility and revert")
+	}
+	if v < 4 {
+		for _, s := range []string{
+			`CREATE TABLE IF NOT EXISTS screen_actions (
+				id                INTEGER PRIMARY KEY AUTOINCREMENT,
+				session_id        INTEGER NOT NULL,
+				message_id        INTEGER NOT NULL DEFAULT 0,
+				action_type       TEXT    NOT NULL DEFAULT '',
+				action_data       TEXT    NOT NULL DEFAULT '{}',
+				screenshot_before TEXT    NOT NULL DEFAULT '',
+				screenshot_after  TEXT    NOT NULL DEFAULT '',
+				status            TEXT    NOT NULL DEFAULT 'pending',
+				error_msg         TEXT    NOT NULL DEFAULT '',
+				created_at        DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+			)`,
+			`CREATE INDEX IF NOT EXISTS idx_screen_actions_session ON screen_actions(session_id)`,
+		} {
+			DB.Exec(s)
+		}
+		addColumnIfMissing("agents", "screen_agent_enabled", "INTEGER NOT NULL DEFAULT 0")
+		addColumnIfMissing("agents", "screen_agent_config", "TEXT NOT NULL DEFAULT '{}'")
+		recordMigration(4, "screen agent – screen_actions table + agents screen_agent columns")
+	}
+	if v < 5 {
+		DB.Exec(`CREATE TABLE IF NOT EXISTS agent_distill_records (
+			id               INTEGER PRIMARY KEY AUTOINCREMENT,
+			family           TEXT    NOT NULL DEFAULT 'colleague',
+			alias            TEXT    NOT NULL DEFAULT '',
+			slug             TEXT    NOT NULL DEFAULT '',
+			profile          TEXT    NOT NULL DEFAULT '',
+			personality_hint TEXT    NOT NULL DEFAULT '',
+			name             TEXT    NOT NULL DEFAULT '',
+			description      TEXT    NOT NULL DEFAULT '',
+			system_prompt    TEXT    NOT NULL DEFAULT '',
+			personality_json TEXT    NOT NULL DEFAULT '{}',
+			source_files_json TEXT   NOT NULL DEFAULT '[]',
+			output_files_json TEXT   NOT NULL DEFAULT '[]',
+			storage_dir      TEXT    NOT NULL DEFAULT '',
+			version          INTEGER NOT NULL DEFAULT 1,
+			status           TEXT    NOT NULL DEFAULT 'completed',
+			created_at       DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+			updated_at       DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+		)`)
+		DB.Exec(`CREATE INDEX IF NOT EXISTS idx_distill_records_alias ON agent_distill_records(alias)`)
+		DB.Exec(`CREATE INDEX IF NOT EXISTS idx_distill_records_updated ON agent_distill_records(updated_at DESC)`)
+		recordMigration(5, "agent distill records – standalone storage for personality distillation")
 	}
 }
 

@@ -53,3 +53,6 @@ frontend-mobile/dist/
 
 # Temporary
 /tmp/
+
+# Embedded git repos
+ai-config/skills/dot-skill/

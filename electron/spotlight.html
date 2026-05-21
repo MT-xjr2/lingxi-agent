@@ -1,0 +1,276 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <title>灵犀 Spotlight</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    :root {
+      --bg: rgba(26, 26, 30, 0.92);
+      --bg-soft: rgba(42, 42, 50, 0.8);
+      --text: #e0e0e6;
+      --text-soft: #8e8e9a;
+      --text-faint: #5a5a66;
+      --accent: #6366f1;
+      --accent-soft: rgba(99, 102, 241, 0.15);
+      --line: rgba(255, 255, 255, 0.08);
+      --radius: 16px;
+    }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      background: transparent;
+      color: var(--text);
+      -webkit-app-region: drag;
+      user-select: none;
+      overflow: hidden;
+    }
+    .spotlight-container {
+      background: var(--bg);
+      border-radius: var(--radius);
+      border: 1px solid var(--line);
+      backdrop-filter: blur(40px) saturate(1.8);
+      -webkit-backdrop-filter: blur(40px) saturate(1.8);
+      box-shadow: 0 20px 60px rgba(0,0,0,0.5), 0 0 0 1px rgba(255,255,255,0.05) inset;
+      overflow: hidden;
+    }
+    .input-area {
+      display: flex;
+      align-items: center;
+      padding: 12px 16px;
+      gap: 10px;
+      -webkit-app-region: no-drag;
+    }
+    .search-icon {
+      width: 20px;
+      height: 20px;
+      color: var(--accent);
+      flex-shrink: 0;
+    }
+    #spotlight-input {
+      flex: 1;
+      background: none;
+      border: none;
+      outline: none;
+      font-size: 18px;
+      color: var(--text);
+      caret-color: var(--accent);
+      font-weight: 400;
+    }
+    #spotlight-input::placeholder { color: var(--text-faint); }
+    .shortcut-hint {
+      font-size: 10px;
+      color: var(--text-faint);
+      background: var(--bg-soft);
+      padding: 2px 6px;
+      border-radius: 4px;
+      white-space: nowrap;
+    }
+    .context-bar {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 6px 16px 10px;
+      font-size: 12px;
+      color: var(--text-soft);
+      border-top: 1px solid var(--line);
+      -webkit-app-region: no-drag;
+    }
+    .context-tag {
+      background: var(--accent-soft);
+      color: var(--accent);
+      padding: 2px 8px;
+      border-radius: 6px;
+      font-size: 11px;
+      font-weight: 500;
+    }
+    .quick-actions {
+      display: flex;
+      gap: 6px;
+      padding: 8px 16px 12px;
+      flex-wrap: wrap;
+      -webkit-app-region: no-drag;
+    }
+    .action-btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      padding: 5px 12px;
+      font-size: 12px;
+      color: var(--text-soft);
+      background: var(--bg-soft);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      cursor: pointer;
+      transition: all 0.15s;
+    }
+    .action-btn:hover {
+      background: var(--accent-soft);
+      color: var(--accent);
+      border-color: var(--accent);
+    }
+    .result-area {
+      max-height: 300px;
+      overflow-y: auto;
+      padding: 8px 16px 12px;
+      border-top: 1px solid var(--line);
+      -webkit-app-region: no-drag;
+    }
+    .result-area::-webkit-scrollbar { width: 4px; }
+    .result-area::-webkit-scrollbar-thumb { background: var(--text-faint); border-radius: 2px; }
+    .result-text {
+      font-size: 14px;
+      line-height: 1.7;
+      color: var(--text);
+      white-space: pre-wrap;
+      word-break: break-word;
+    }
+    .loading {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 12px 0;
+      font-size: 13px;
+      color: var(--text-soft);
+    }
+    .loading-dot {
+      width: 6px; height: 6px;
+      border-radius: 50%;
+      background: var(--accent);
+      animation: pulse 1.2s ease-in-out infinite;
+    }
+    .loading-dot:nth-child(2) { animation-delay: 0.2s; }
+    .loading-dot:nth-child(3) { animation-delay: 0.4s; }
+    @keyframes pulse { 0%, 100% { opacity: 0.3; } 50% { opacity: 1; } }
+    .hidden { display: none; }
+  </style>
+</head>
+<body>
+  <div class="spotlight-container">
+    <div class="input-area">
+      <svg class="search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/>
+      </svg>
+      <input id="spotlight-input" type="text" placeholder="问灵犀任何问题..." autofocus autocomplete="off">
+      <span class="shortcut-hint">Esc 关闭</span>
+    </div>
+    <div id="context-bar" class="context-bar hidden">
+      <span>当前在</span>
+      <span id="context-tag" class="context-tag"></span>
+      <span id="context-title" style="opacity:0.7; flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;"></span>
+    </div>
+    <div id="quick-actions" class="quick-actions hidden"></div>
+    <div id="result-area" class="result-area hidden">
+      <div id="result-content" class="result-text"></div>
+    </div>
+    <div id="loading" class="loading hidden" style="padding: 8px 16px 12px;">
+      <div class="loading-dot"></div>
+      <div class="loading-dot"></div>
+      <div class="loading-dot"></div>
+      <span>思考中...</span>
+    </div>
+  </div>
+
+  <script>
+    const input = document.getElementById('spotlight-input');
+    const contextBar = document.getElementById('context-bar');
+    const contextTag = document.getElementById('context-tag');
+    const contextTitle = document.getElementById('context-title');
+    const quickActionsEl = document.getElementById('quick-actions');
+    const resultArea = document.getElementById('result-area');
+    const resultContent = document.getElementById('result-content');
+    const loadingEl = document.getElementById('loading');
+
+    let currentContext = {};
+    let backendPort = 3001;
+
+    async function init() {
+      try {
+        backendPort = await window.electronAPI.spotlightGetPort();
+      } catch {}
+    }
+    init();
+
+    window.electronAPI?.onSpotlightContext?.((ctx) => {
+      currentContext = ctx;
+      if (ctx.appName) {
+        contextBar.classList.remove('hidden');
+        contextTag.textContent = ctx.appName;
+        contextTitle.textContent = ctx.windowTitle || '';
+      } else {
+        contextBar.classList.add('hidden');
+      }
+
+      if (ctx.quickActions && ctx.quickActions.length > 0) {
+        quickActionsEl.classList.remove('hidden');
+        quickActionsEl.innerHTML = ctx.quickActions.map(a =>
+          `<button class="action-btn" data-action="${a.id}">${a.icon} ${a.label}</button>`
+        ).join('');
+      } else {
+        quickActionsEl.classList.add('hidden');
+      }
+
+      updateWindowSize();
+    });
+
+    quickActionsEl.addEventListener('click', (e) => {
+      const btn = e.target.closest('.action-btn');
+      if (!btn) return;
+      const action = btn.dataset.action;
+      const label = btn.textContent.trim();
+      input.value = label;
+      sendQuery(label);
+    });
+
+    input.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') {
+        window.electronAPI?.hideSpotlight();
+      } else if (e.key === 'Enter' && input.value.trim()) {
+        sendQuery(input.value.trim());
+      }
+    });
+
+    async function sendQuery(query) {
+      resultArea.classList.remove('hidden');
+      resultContent.textContent = '';
+      loadingEl.classList.remove('hidden');
+      quickActionsEl.classList.add('hidden');
+      updateWindowSize();
+
+      try {
+        const body = {
+          message: query,
+          context: {
+            app: currentContext.appName || '',
+            window_title: currentContext.windowTitle || '',
+            url: currentContext.url || '',
+            context_type: currentContext.contextType || 'general',
+          },
+        };
+
+        const res = await fetch(`http://localhost:${backendPort}/api/chat/quick`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(body),
+        });
+        const data = await res.json();
+        loadingEl.classList.add('hidden');
+        resultContent.textContent = data.reply || data.error || '无法获取回复';
+      } catch (err) {
+        loadingEl.classList.add('hidden');
+        resultContent.textContent = '连接失败: ' + err.message;
+      }
+      updateWindowSize();
+    }
+
+    function updateWindowSize() {
+      requestAnimationFrame(() => {
+        const container = document.querySelector('.spotlight-container');
+        const height = container.scrollHeight + 2;
+        window.electronAPI?.resizeSpotlight(height);
+      });
+    }
+
+    input.focus();
+  </script>
+</body>
+</html>

@@ -13,6 +13,7 @@ import { Badge } from '../ui/primitives';
 import { cn } from '../ui/cn';
 import { formatNum } from './blockUtils';
 import { useStore } from '../state/useStore';
+import { MermaidBlock, PlantUMLBlock } from './DiagramBlocks';
 
 const TOOL_ICONS = {
   Bash: Terminal, Write: Pencil, Edit: Pencil, MultiEdit: Pencil,
@@ -267,10 +268,16 @@ function CodeBlock({ children, className: langClass }) {
   );
 }
 
-const MD_COMPONENTS = {
+export const MD_COMPONENTS = {
   code({ children, className, ...rest }) {
     const isBlock = className?.startsWith('language-');
-    if (isBlock) return <CodeBlock className={className}>{children}</CodeBlock>;
+    if (isBlock) {
+      const lang = (className || '').replace('language-', '').toLowerCase();
+      const code = String(children).replace(/\n$/, '');
+      if (lang === 'mermaid') return <MermaidBlock code={code} />;
+      if (lang === 'plantuml' || lang === 'puml' || lang === 'uml') return <PlantUMLBlock code={code} />;
+      return <CodeBlock className={className}>{children}</CodeBlock>;
+    }
     return <code className={className} {...rest}>{children}</code>;
   },
   pre({ children }) {
@@ -1145,11 +1152,12 @@ export function TextBlock({ text, live }) {
   );
 }
 
-export function BlocksRenderer({ blocks, live }) {
+export function BlocksRenderer({ blocks, live, hideThinking = false }) {
+  const visible = hideThinking ? blocks.filter((b) => b.type !== 'thinking') : blocks;
   return (
     <div className="space-y-1">
-      {blocks.map((b, i) => {
-        const isLast = i === blocks.length - 1;
+      {visible.map((b, i) => {
+        const isLast = i === visible.length - 1;
         if (b.type === 'thinking') return <ThinkingCard key={i} text={b.text} live={live && isLast} />;
         if (b.type === 'tool') return <ToolCard key={i} {...b} />;
         if (b.type === 'text') return <TextBlock key={i} text={b.text} live={live && isLast} />;

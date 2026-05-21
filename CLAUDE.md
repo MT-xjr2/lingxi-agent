@@ -55,8 +55,14 @@ lingxi-agent/
 │   │   ├── im_connector.go   # IM 连接器 CRUD
 │   │   ├── evolution.go      # 自我进化日志 CRUD + InsertMemory
 │   │   ├── nexus.go          # Nexus 表 CRUD（peers/contacts/a2a）
-│   │   └── mcp_agent.go      # MCP-Agent 关联
+│   │   ├── group_chat.go     # 群聊 CRUD（group_chats/group_members/group_messages，含微信风扩展列）
+│   │   ├── agent_personality.go  # 群聊 Agent 人格（agent_personalities 表）
+│   │   ├── mcp_agent.go      # MCP-Agent 关联
+│   │   └── screen_agent.go   # Screen Agent screen_actions 表 CRUD
 │   ├── handler/              # HTTP Handlers
+│   │   ├── agent_distill.go  # 人格蒸馏（dot-skill SSE + apply）
+│   │   ├── agent_avatar.go   # 智能体头像上传
+│   │   ├── dot_skill.go      # dot-skill 安装与路径
 │   │   ├── agent.go          # 智能体 CRUD（含 API 缓存）
 │   │   ├── cache.go          # TTL 缓存（sync.RWMutex，30s）
 │   │   ├── chat.go           # 对话 + WebSocket 流式
@@ -73,11 +79,15 @@ lingxi-agent/
 │   │   ├── a2a_conversation.go # A2A 对话管理（发起/接受/拒绝/暂停/接管/终止/审批）
 │   │   ├── agent_nexus_config.go # Agent 对外设置 CRUD
 │   │   ├── evolution.go      # 自我进化引擎 + API（分析/提取/日志）
+│   │   ├── screen_agent.go   # Screen Agent API（截屏分析/规划/OTA循环/安全确认）
 │   │   ├── backup.go         # 数据库备份（VACUUM INTO + 导出）
 │   │   ├── health.go         # 结构化健康检查
 │   │   ├── middleware.go     # CORS + Body Size + Rate Limiter
 │   │   ├── memory.go         # 长期记忆 CRUD + 消息固定
 │   │   ├── transcribe.go     # 语音识别（本地 whisper.cpp 优先，回退远端 API）
+│   │   ├── group_chat.go     # 群聊 HTTP API（创建/列表/发言/撤回/分页消息/邀请处理）
+│   │   ├── group_upload.go   # 群聊图片上传（POST /api/group-chats/upload）
+│   │   ├── agent_personality.go # Agent 群聊人格 CRUD（GET/PUT /api/agents/:id/personality）
 │   │   └── ws_hub.go         # WebSocket Hub
 │   ├── connector/            # IM 平台对接（企微/钉钉/飞书）
 │   ├── model/                # 数据模型
@@ -91,6 +101,15 @@ lingxi-agent/
 │   │   └── signaling.go      # 信令客户端（无 HMAC，支持 conversation_invite/accept/reject）
 │   ├── router/               # AI 引擎路由（CCR）
 │   ├── scheduler/            # 定时任务调度器
+│   ├── groupbehavior/        # 群聊行为引擎（人格驱动并发评估 + quirks + 冷场守望者）
+│   ├── vectordb/             # 向量数据库（纯 Go cosine + 分块/嵌入/混合检索）
+│   │   ├── vectordb.go       # 向量 DB 初始化 + CRUD + cosine 搜索 + 配置管理
+│   │   ├── chunker.go        # 文本递归分块（512 字符，128 重叠）
+│   │   ├── embedder.go       # 嵌入接口（API 模式）
+│   │   ├── retriever.go      # 混合检索（向量 + BM25 + RRF 融合）
+│   │   └── indexer.go        # 索引引擎（全量/增量/监控目录）
+│   ├── watcher/              # 文件夹监控（fsnotify 变化检测 + 增量索引）
+│   │   └── watcher.go
 │   └── usage/                # 用量计算 + 定价
 │
 ├── frontend-desktop/         # React 前端
@@ -115,7 +134,9 @@ lingxi-agent/
 │   │   │   ├── Bubble.jsx    # 消息气泡 + 复制按钮
 │   │   │   ├── blocks.jsx    # 文本块/思考块/工具块渲染
 │   │   │   ├── SearchModal.jsx # Cmd+K 全文搜索
-│   │   │   └── AgentPicker.jsx
+│   │   │   ├── AgentPicker.jsx
+│   │   │   ├── ScreenBlock.jsx      # Screen Agent 截图+标注+操作计划渲染
+│   │   │   └── ScreenAgentPanel.jsx # Screen Agent 控制面板
 │   │   ├── settings/         # 设置页
 │   │   │   ├── SettingsPage.jsx
 │   │   │   ├── ProfilesPage.jsx   # 接入点管理
@@ -129,7 +150,9 @@ lingxi-agent/
 │   │   │   ├── A2AMessageBubble.jsx    # 专用消息气泡
 │   │   │   └── StartA2AModal.jsx       # 发起对话弹窗（直接从 peer 发起）
 │   │   ├── LoginPage.jsx           # SSO 登录页（微信/QQ/Google/钉钉/抖音 + 游客）
-│   │   ├── AgentFactoryPage.jsx    # 智能体工厂 + 模板市场
+│   │   ├── AgentFactoryPage.jsx    # 智能体工厂 + 模板市场 + 人格蒸馏入口
+│   │   ├── agents/DistillAgentModal.jsx  # dot-skill 蒸馏向导
+│   │   ├── ui/AgentAvatar.jsx      # emoji / 图片头像统一组件
 │   │   ├── WorkflowPage.jsx        # 可视化工作流编排（拖拽节点式编辑器）
 │   │   ├── SkillsPage.jsx
 │   │   ├── KnowledgePage.jsx
@@ -146,7 +169,12 @@ lingxi-agent/
 │
 ├── electron/                 # Electron 主进程
 │   ├── main.js               # 窗口管理、子进程启动
-│   ├── preload.js            # IPC Bridge
+│   ├── preload.js            # IPC Bridge（含 Spotlight/剪贴板 API）
+│   ├── spotlight.js           # Spotlight 悬浮窗管理（BrowserWindow）
+│   ├── spotlight.html         # Spotlight UI（极简浮窗）
+│   ├── context-sensor.js      # 上下文传感器（活跃窗口 + 浏览器 URL）
+│   ├── clipboard-monitor.js   # 剪贴板智能监控（内容分类 + 建议推送）
+│   ├── screen-controller.js   # Screen Agent 桌面操控引擎（截屏/鼠标/键盘/速率限制）
 │   ├── splash.html           # 冷启动 Splash 页（后端就绪前显示）
 │   ├── package.json          # electron-builder 配置
 │   ├── assets/               # 图标、entitlements
@@ -184,8 +212,11 @@ cd electron && npm install && npm start
 ### 打包 & 发版
 
 ```bash
-# 0. 确保 Node.js 版本足够
-export PATH="/tmp/node22/bin:$PATH"  # 若系统 node < 20.19
+# 0. 确保 Node.js 版本足够（Vite 8 要求 ≥20.19 或 ≥22.12）
+# 若系统 Node < 20.19，需提前准备 Node 22：
+#   mkdir -p /tmp/node22 && cd /tmp/node22
+#   curl -fsSL https://nodejs.org/dist/v22.15.0/node-v22.15.0-darwin-arm64.tar.gz | tar -xzf - --strip-components=1
+# build-desktop.sh 会自动检测并使用 /tmp/node22/bin/node
 
 # 1. 一键构建（支持 mac / win / all，默认 all）
 ./build-desktop.sh          # 默认同时构建 macOS + Windows
@@ -274,6 +305,15 @@ dist-electron/
 | GET/POST/DELETE | /api/agents/* | Agent CRUD | 智能体管理 |
 | GET/POST/DELETE | /api/knowledge/* | Knowledge CRUD | 知识库管理 |
 | GET | /api/knowledge/:id/preview | PreviewKnowledge | 知识库预览 |
+| POST | /api/knowledge/reindex | ReindexKnowledge | 全量重建向量索引 |
+| GET | /api/knowledge/index-status | GetIndexStatus | 索引状态（文档数/分块数/进度） |
+| GET | /api/knowledge/search | SemanticSearch | 语义搜索（混合检索） |
+| GET | /api/knowledge/watched-dirs | ListWatchedDirs | 监控目录列表 |
+| POST | /api/knowledge/watched-dirs | AddWatchedDir | 添加监控目录 |
+| DELETE | /api/knowledge/watched-dirs/:id | RemoveWatchedDir | 删除监控目录 |
+| GET | /api/knowledge/embedding-config | GetEmbeddingConfig | 嵌入模型配置 |
+| PUT | /api/knowledge/embedding-config | SetEmbeddingConfig | 更新嵌入配置 |
+| POST | /api/chat/quick | QuickChat | Spotlight 快捷对话 |
 | GET/POST/DELETE | /api/api-profiles/* | Profile CRUD | 接入点管理 |
 | POST | /api/api-profiles/:id/activate | ActivateAPIProfile | 激活接入点 |
 | POST | /api/api-profiles/:id/test | TestAPIProfile | 测试连通性 |
@@ -348,6 +388,17 @@ dist-electron/
 | GET | /api/health | HealthCheck | 结构化健康检查 |
 | GET | /api/backup/export | ExportBackup | 导出数据库备份 |
 | POST | /api/skills/batch-export | BatchExportSkills | 批量导出技能 ZIP |
+| POST | /api/screen-agent/analyze | ScreenAgentAnalyze | 截屏 + 多模态模型分析屏幕 |
+| POST | /api/screen-agent/plan | ScreenAgentPlan | 截屏 + 生成操作计划 |
+| POST | /api/screen-agent/step | ScreenAgentExecuteStep | 执行单步操作 |
+| POST | /api/screen-agent/step-result | ScreenAgentStepResult | 回报操作执行结果 |
+| POST | /api/screen-agent/execute-plan | ScreenAgentExecutePlan | 执行完整操作计划（OTA 循环） |
+| POST | /api/screen-agent/confirm | ScreenAgentConfirmStep | 用户确认/拒绝操作步骤 |
+| POST | /api/screen-agent/abort | ScreenAgentAbort | 中止 Screen Agent |
+| POST | /api/screen-agent/reset | ScreenAgentReset | 重置中止状态 |
+| GET | /api/screen-agent/actions | ListScreenActions | Screen Agent 操作日志 |
+| GET | /api/agents/:id/screen-config | GetAgentScreenConfig | Agent 屏幕操控设置 |
+| PUT | /api/agents/:id/screen-config | SetAgentScreenConfig | 更新屏幕操控设置 |
 
 ---
 
@@ -438,6 +489,8 @@ xattr -cr "/Applications/灵犀.app"
 
 ### 智能体
 - 智能体工厂（创建/编辑/删除）
+- **自定义头像**（`POST /api/agents/upload-avatar`，`agents.avatar` 支持 `/api/uploads/` URL）
+- **人格蒸馏**（集成 [dot-skill](https://github.com/titanwings/colleague-skill)：`GET /api/agents/distill/status`、`POST /api/agents/distill/stream`、`POST /api/agents/distill/apply`、`POST /api/skills/install-github`；前端 `DistillAgentModal.jsx`）
 - **五步引导式创建向导（身份/角色/能力/对外设置/预览）**
 - **支持 temperature、max_tokens 参数调整**
 - **支持 post_actions 后续动作（工作流链式执行数据模型）**
@@ -458,11 +511,34 @@ xattr -cr "/Applications/灵犀.app"
 - **技能批量上传 + 批量导出（多个技能打包为单个 ZIP）**
 - AI 生成技能 / ZIP 上传导入
 
-### 知识库
+### 知识库 + 深度 RAG
 - 支持 .md/.txt/.csv/.tsv/.json/.pdf/.docx 格式
 - 分类管理（文档/问答/数据）
 - 拖拽批量上传
 - 内容预览
+- **本地向量索引引擎（纯 Go cosine similarity，768 维嵌入，独立 vectors.db）**
+- **文本递归分块（512 字符/块，128 重叠，按段落/句子/字符边界分割）**
+- **嵌入模型接口（API 模式，调用 OpenAI 兼容 /embeddings 端点）**
+- **混合检索（向量 KNN + 关键词 BM25 + RRF 融合排序）**
+- **对话时自动向量检索注入知识库上下文（优先向量，回退关键词）**
+- **语义搜索 UI（知识库页面新增语义搜索面板）**
+- **索引状态面板（已索引文档数/分块数/进度条/最后更新时间）**
+- **文件夹监控（fsnotify 自动检测变化 + 增量索引 + 监控目录管理 UI）**
+- **嵌入模型配置 UI（API 地址 + 模型名称）**
+
+### 屏幕感知主动助手 + Screen Agent
+- **Spotlight 悬浮窗（Cmd+Shift+Space 全局唤出，alwaysOnTop 独立窗口）**
+- **上下文传感器（AppleScript/Win32 获取活跃窗口 + 浏览器 URL）**
+- **Quick Actions（基于上下文动态快捷操作：IDE → 解释代码/生成测试；浏览器 → 总结/翻译）**
+- **快捷对话（POST /api/chat/quick，带上下文元数据 + 知识库检索）**
+- **剪贴板智能监控（2 秒轮询 + 内容分类：代码/报错/URL/英文长文/命令）**
+- **剪贴板建议气泡（右下角非侵入式通知，6 秒自动消失，点击发送到对话）**
+- **Screen Agent 截屏理解（Agent 主动截屏 + 多模态模型分析屏幕内容）**
+- **Screen Agent 操作规划（Agent 根据截图生成操作步骤列表，支持风险评估）**
+- **Screen Agent 桌面操控（AppleScript 实现鼠标点击/键盘输入/滚动/打开应用）**
+- **Screen Agent OTA 循环（Observe-Think-Act 逐步执行 + 每步人类确认）**
+- **Screen Agent 安全机制（危险操作黑名单强制确认/速率限制/紧急中止 ⌘⇧Esc）**
+- **Screen Agent 操作审计（screen_actions 表记录所有操作日志）**
 
 ### UI/UX
 - 6 套主题（light/dark/midnight/cyber/aurora/cosmos）
@@ -551,3 +627,41 @@ xattr -cr "/Applications/灵犀.app"
 - **React.lazy 懒加载（非默认页按需加载）**
 - **Modal 焦点陷阱 + ARIA 无障碍**
 - **WS 流式 token 50ms 缓冲刷新（减少 React 重渲染）**
+
+### 灵犀 4 大功能改造（2026-05）
+- **定时任务时区 BUG 修复**：fmtTimeForSQLite 改为 UTC 写入 + scan 时统一 Local() 化，避免 next_run_at 永远在未来而永不触发
+- **定时任务启动自检 + 实时交互**：启动时补齐缺失 next_run_at；scheduled_task_started/done WS 事件 + ScheduledTasksPage 实时运行中徽章 + AppShell 顶部小红点
+- **会话级自动进化**：每轮对话结束时检测「消息数 ≥ 6 且距上次进化 > 30 分钟」自动 TryAutoEvolution
+- **全局进化扫描器**（`backend-desktop/evolution/scanner.go`）：每 6 小时巡检所有启用进化的 Agent + 安静时段 + 冷却控制 + 前端可视化配置
+- **聊天富 Markdown 渲染**：MermaidBlock（mermaid v11 ESM 懒加载 + SVG 渲染 + 源码切换 + 放大）+ PlantUMLBlock（pako encode → kroki.io SVG）
+- **System prompt 强化输出格式**：必用 Markdown 元素（标题/列表/表格/代码围栏）+ 主动 Mermaid 图表（流程/时序/架构/状态机/甘特/类图）+ 复杂 UML 用 PlantUML
+- **Agent 群聊（Group Chat）完整实现**：
+  - 数据模型：group_chats / group_members / group_messages
+  - Nexus 协议：/group/invite、/group/join_ack、/group/message、/group/leave、/group/stream_token、/group/recall
+  - 调度：@提及 + LLM 主持人决策 + 轮询 + 混合（hybrid 默认）
+  - 跨实例广播：群主作为消息中转，向所有远端成员转发
+  - HTTP API：CRUD + accept/reject/leave/terminate/post
+  - UI：NexusPage tab 切换、GroupChatView 成员列表+流式气泡+@提及 picker、CreateGroupModal、群邀请卡片
+- **信令服务器 relay_multi 多播**：SignalMessage 新增 to_list 字段，群聊广播 O(N) 往返降为 O(1)
+
+### 微信风群聊重做（v2026-05 Phase 1）
+- **WeChat 风 UI**：GroupChatView 拆分为 GroupHeader（话题 + 9 头像堆叠 + 菜单）/ GroupMessageList（带合并气泡 / 时间戳胶囊 / 下拉加载更早 / 新消息蓝色 Pill）/ GroupMessageBubble（绿色自己 #95ec69 + 白色他人 + 引用卡 + 撤回标记 + 长按菜单 + 图片网格）/ GroupComposer（+菜单 / Emoji picker / @ picker / 引用预览 / 图片上传）/ GroupMemberDrawer（双击 @）
+- **引用 / 撤回 / 时间戳**：消息间隔 ≥3min 才显示时间戳；自己消息 2 分钟内可撤回；引用块灰底左竖线；撤回后跨实例同步（/group/recall）
+- **Agent 群聊人格表 `agent_personalities`**：tags / interests / speak_probability / min_delay_ms / max_delay_ms / emoji_freq / quiet_start / quiet_end / typo_rate / echo_rate / ghost_minutes / cold_start_eligible / style_hint
+- **行为引擎 `backend-desktop/groupbehavior/`**：
+  - `engine.go` PickSpeakers — 每条新消息让所有 joined 本地 Agent **并发独立**评估发言概率（@me 强制 / 兴趣 +30 / 冷场 +40 / 安静时段 ×0.1 / 被怼 +50 / 自己刚说过 ×0.2）
+  - 各自延迟（min~max + 抖动；高分加速；@提及 500-1500ms 秒回）后调用 LLM 发言，多 Agent 可"抢话"
+  - `quirks.go` 微观人格：MaybeAddTypo / MaybeEcho（"+1"复读）/ MaybeEmpty（0.5% 直接 [SKIP]）/ EmojiSuffix
+  - `watcher.go` 冷场守望者：每 60s 巡检 host 本地的活跃群，>5min 无消息 + 4min 冷却内未触发过 → 触发"冷场救场"专属调用
+- **Prompt 重做**：buildGroupSystemPrompt（替代 buildA2ASystemPrompt：WeChat 铁律 + 人格 + 标签 + 兴趣 + style_hint）+ buildGroupUserPrompt（成员名单 + 最近 15 条带 id 的消息 + 引用映射）
+- **`@reply:<id>` 协议**：Agent 在回复开头写 `@reply:142`，后端解析为 reply_to_id（剥离标记后持久化），UI 自动渲染灰色引用块
+- **group_messages 扩展列**：reply_to_id / is_recalled / recalled_at / images / client_msg_id / edited_at（addColumnIfMissing 迁移）
+- **新增 API**：
+  - GET `/api/group-chats/:id/messages?before=&limit=` — 下拉加载更早
+  - POST `/api/group-chats/:id/messages/:msgId/recall` — 用户撤回（≤120s）
+  - POST `/api/group-chats/upload` — 群聊图片上传（multipart，10MB 上限）
+  - GET/PUT `/api/agents/:id/personality` — Agent 群聊人格 CRUD
+- **新增 Nexus 端点**：POST `/api/nexus/group/recall` — 跨实例同步撤回
+- **新增 WS 事件**：group_message_recalled / group_agent_typing
+- **AgentFactoryPage 角色步骤增加"群聊人格"折叠面板**：ChipInput（标签/兴趣）+ 概率 slider + min/max 延迟 + 安静时段（HH:MM）+ Emoji 频率 + 错别字/复读/被怼冷静 + cold_start 开关 + style_hint Textarea
+- **前端 nexusSlice 扩展**：groupTypingAgents / groupDrafts / groupOldestId + loadOlderGroupMessages + applyGroupRecall + applyGroupAgentTyping

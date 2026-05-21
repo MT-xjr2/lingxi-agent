@@ -1,6 +1,7 @@
 package scheduler
 
 import (
+	"encoding/json"
 	"fmt"
 	"log/slog"
 	"strconv"
@@ -16,21 +17,38 @@ type ChatRunner func(message string, sessionID int64) (reply string, usedSession
 // NotifyFunc 由 main 包注入，通过 WebSocket 发送桌面通知事件
 type NotifyFunc func(taskName, summary string)
 
+// BroadcastFunc 由 main 包注入，向 WebSocket 广播事件（用于运行时进度推送）
+type BroadcastFunc func(event, data string)
+
 var (
-	runner   ChatRunner
-	notify   NotifyFunc
-	stopChan chan struct{}
+	runner    ChatRunner
+	notify    NotifyFunc
+	broadcast BroadcastFunc
+	stopChan  chan struct{}
 )
 
 // Init 注入依赖
-func Init(chatRunner ChatRunner, notifyFn NotifyFunc) {
+func Init(chatRunner ChatRunner, notifyFn NotifyFunc, broadcastFn BroadcastFunc) {
 	runner = chatRunner
 	notify = notifyFn
+	broadcast = broadcastFn
 }
 
-// Start 启动调度循环（后台 goroutine，每分钟检查一次到期任务）
+func emit(event string, payload map[string]interface{}) {
+	if broadcast == nil {
+		return
+	}
+	b, _ := json.Marshal(payload)
+	broadcast(event, string(b))
+}
+
+// Start 启动调度循环（后台 goroutine，每 15 秒检查一次到期任务）
 func Start() {
 	stopChan = make(chan struct{})
+
+	// 启动自检：补齐 enabled=1 但 next_run_at 为空的任务，避免新装机/断电后任务永不触发
+	repairMissingNextRun()
+
 	go func() {
 		ticker := time.NewTicker(15 * time.Second)
 		defer ticker.Stop()
@@ -42,12 +60,36 @@ func Start() {
 			case <-ticker.C:
 				checkAndRun()
 			case <-stopChan:
-				slog.Info("stopped")
+				slog.Info("scheduler stopped")
 				return
 			}
 		}
 	}()
-	slog.Info("started (interval=15s)")
+	slog.Info("scheduler started", "interval", "15s", "now", time.Now().Format(time.RFC3339))
+}
+
+// repairMissingNextRun 启动时扫描所有 enabled 任务，补齐 next_run_at 为空的项
+func repairMissingNextRun() {
+	tasks, err := db.ListScheduledTasks()
+	if err != nil {
+		slog.Warn("scheduler repair: list tasks failed", "err", err)
+		return
+	}
+	now := time.Now()
+	repaired := 0
+	for _, t := range tasks {
+		if !t.Enabled {
+			continue
+		}
+		if t.NextRunAt == nil {
+			next := CalcNextRun(t.CronExpr, now)
+			if next != nil {
+				db.SetScheduledTaskNextRun(t.ID, next)
+				repaired++
+			}
+		}
+	}
+	slog.Info("scheduler self-check", "total", len(tasks), "repaired_next_run", repaired)
 }
 
 // Stop 停止调度循环
@@ -60,8 +102,11 @@ func Stop() {
 func checkAndRun() {
 	tasks, err := db.GetDueScheduledTasks()
 	if err != nil {
-		slog.Info("query due tasks", "err", err)
+		slog.Warn("scheduler query due tasks error", "err", err)
 		return
+	}
+	if len(tasks) > 0 {
+		slog.Info("scheduler tick: due tasks found", "count", len(tasks), "now", time.Now().Format(time.RFC3339))
 	}
 	for _, t := range tasks {
 		go executeTask(t)
@@ -74,7 +119,7 @@ func RunTaskNow(t db.ScheduledTask) {
 }
 
 func executeTask(t db.ScheduledTask) {
-	slog.Info("executing task", "i_d", t.ID, "name", t.Name)
+	slog.Info("executing scheduled task", "id", t.ID, "name", t.Name)
 
 	// 立即更新 next_run_at，防止 15s 检查周期内重复触发
 	nextRun := CalcNextRun(t.CronExpr, time.Now())
@@ -91,7 +136,7 @@ func executeTask(t db.ScheduledTask) {
 		}
 		res, err := db.DB.Exec(`INSERT INTO sessions (title, agent_id) VALUES (?, ?)`, title, t.AgentID)
 		if err != nil {
-			slog.Info("create session for task", "i_d", t.ID, "err", err)
+			slog.Warn("create session for scheduled task", "id", t.ID, "err", err)
 			return
 		}
 		sessionID, _ = res.LastInsertId()
@@ -102,25 +147,45 @@ func executeTask(t db.ScheduledTask) {
 
 	runID, err := db.CreateScheduledTaskRun(t.ID, sessionID)
 	if err != nil {
-		slog.Info("create run record", "err", err)
+		slog.Warn("create scheduled run record", "err", err)
 		return
 	}
 
+	emit("scheduled_task_started", map[string]interface{}{
+		"task_id":    t.ID,
+		"task_name":  t.Name,
+		"session_id": sessionID,
+		"run_id":     runID,
+		"started_at": time.Now().UnixMilli(),
+	})
+
 	if runner == nil {
 		db.FinishScheduledTaskRun(runID, "failed", "runner not initialized")
+		emit("scheduled_task_done", map[string]interface{}{
+			"task_id": t.ID, "run_id": runID, "session_id": sessionID,
+			"status": "failed", "summary": "runner not initialized",
+		})
 		return
 	}
 
 	reply, _, runErr := runner(t.Prompt, sessionID)
 	if runErr != nil {
-		slog.Warn("task  run error", "i_d", t.ID, "err", runErr)
+		slog.Warn("scheduled task run error", "id", t.ID, "err", runErr)
 		db.FinishScheduledTaskRun(runID, "failed", runErr.Error())
+		emit("scheduled_task_done", map[string]interface{}{
+			"task_id": t.ID, "run_id": runID, "session_id": sessionID,
+			"status": "failed", "summary": runErr.Error(),
+		})
 	} else {
 		summary := reply
 		if len([]rune(summary)) > 200 {
 			summary = string([]rune(summary)[:200]) + "…"
 		}
 		db.FinishScheduledTaskRun(runID, "completed", summary)
+		emit("scheduled_task_done", map[string]interface{}{
+			"task_id": t.ID, "run_id": runID, "session_id": sessionID,
+			"status": "completed", "summary": summary,
+		})
 	}
 
 	// 桌面通知（附带 session_id 以便前端跳转查看结果）
@@ -132,7 +197,7 @@ func executeTask(t db.ScheduledTask) {
 		notify(t.Name, fmt.Sprintf("定时任务「%s」已%s|session_id:%d", t.Name, status, sessionID))
 	}
 
-	slog.Info("task  done, next_run", "i_d", t.ID, "value", nextRun)
+	slog.Info("scheduled task done", "id", t.ID, "next_run", nextRun)
 }
 
 // CalcNextRun 根据 cron 表达式计算下一次运行时间。

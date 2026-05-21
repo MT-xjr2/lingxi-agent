@@ -1,556 +1,685 @@
 <p align="center">
-  <img src="logo.jpg" width="140" alt="灵犀 Logo" />
+  <img src="logo.jpg" width="128" alt="灵犀 Logo" />
 </p>
 
 <h1 align="center">灵犀 AI Agent</h1>
 
 <p align="center">
-  <strong>本地优先 · 多模型 · 多智能体 · 自我进化 · Agent 间对话 · 开箱即用</strong>
+  <strong>本地优先的桌面 AI Agent 工作台</strong><br/>
+  多模型 · 多智能体 · 人格蒸馏 · 深度 RAG · 屏幕操控 · Agent 互联 · 群聊协作 · 自我进化
 </p>
 
 <p align="center">
-  <a href="LICENSE"><img src="https://img.shields.io/badge/license-Personal%20Use-orange.svg" alt="Personal Use License" /></a>
-  <img src="https://img.shields.io/badge/platform-macOS%20%7C%20Windows-lightgrey.svg" alt="Platform" />
-  <img src="https://img.shields.io/badge/Electron-36-47848F.svg?logo=electron" alt="Electron" />
-  <img src="https://img.shields.io/badge/React-19-61DAFB.svg?logo=react" alt="React" />
-  <img src="https://img.shields.io/badge/Go-1.24-00ADD8.svg?logo=go" alt="Go" />
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-Personal%20Use-orange" alt="License" /></a>
+  <img src="https://img.shields.io/badge/platform-macOS%20%7C%20Windows-lightgrey" alt="Platform" />
+  <img src="https://img.shields.io/badge/Electron-36-47848F?logo=electron&logoColor=white" alt="Electron" />
+  <img src="https://img.shields.io/badge/React-19-61DAFB?logo=react&logoColor=white" alt="React" />
+  <img src="https://img.shields.io/badge/Go-1.24-00ADD8?logo=go&logoColor=white" alt="Go" />
 </p>
 
 <p align="center">
-  <a href="README-EN.md">English</a>&nbsp;&nbsp;|&nbsp;&nbsp;
-  <a href="#-为什么选灵犀">为什么选灵犀</a>&nbsp;&nbsp;|&nbsp;&nbsp;
-  <a href="#-功能一览">功能一览</a>&nbsp;&nbsp;|&nbsp;&nbsp;
-  <a href="#-截图画廊">截图画廊</a>&nbsp;&nbsp;|&nbsp;&nbsp;
-  <a href="#-快速开始">快速开始</a>&nbsp;&nbsp;|&nbsp;&nbsp;
-  <a href="#-技术架构">架构</a>&nbsp;&nbsp;|&nbsp;&nbsp;
-  <a href="#-开源协议">License</a>
-</p>
-
-<br/>
-
-> **不只是聊天工具。** 创建你的专属智能体团队，赋予它们技能和知识库，让它们从对话中自我进化，编排自动化工作流，甚至让不同电脑上的 Agent 跨网络对话 —— 一切都在本地运行。
-
-<br/>
-
-<p align="center">
-  <img src="images/首页.png" alt="灵犀工作台首页" width="900" />
+  <a href="README-EN.md">English</a> ·
+  <a href="#-为什么做灵犀">为什么做</a> ·
+  <a href="#-核心亮点">核心亮点</a> ·
+  <a href="#-能力全景">能力全景</a> ·
+  <a href="#-功能详解">功能详解</a> ·
+  <a href="#-快速开始">快速开始</a> ·
+  <a href="#-技术架构">架构</a> ·
+  <a href="#-支持项目">支持</a>
 </p>
 
 <br/>
 
 ---
 
-## ✨ 为什么选灵犀
+## 📷 主界面一览
+
+<!-- 📷 主视觉截图 -->
+<p align="center">
+  <img src="images/screenshots/01-hero-home.png" alt="灵犀工作台" width="920" />
+</p>
+<p align="center"><sub>灵犀工作台总览 — 对话、智能体、工具一站式掌控</sub></p>
+
+<br/>
+
+---
+
+## 🤔 为什么做灵犀
+
+市面上 AI 产品很多，ChatGPT、Claude、各种对话 App。但当你真正想把 AI 当作**工作伙伴**而非临时问答机器时，会遇到一连串问题：
+
+- **数据全在云上**：对话记录、知识库、API Key 全交给第三方，隐私无保障。
+- **只是换了个 System Prompt**：所谓的「自定义助手」不过是换个身份标签，没有真正的技能、工具和记忆。
+- **Agent 之间无法协作**：你的代码审查助手和同事的架构师助手，永远活在各自的孤岛上。
+- **不会进化**：你纠正了 AI 一百次，它下次还犯同样的错 — 因为没有记忆和进化机制。
+- **群聊只是轮流发言**：多 Agent 场景要么是机械轮询，要么是所有人齐刷刷回复，毫无自然感。
+
+**灵犀**就是为了解决这些问题而生。它在你的本机运行一整套 Agent 基础设施：数据和密钥始终留在本地，每个智能体都有独立的技能、知识库和工具，Agent 之间可以跨设备实时对话，从你的真实聊天记录蒸馏出人格，还能在使用中自我进化。
+
+**一句话概括：灵犀不是「又一个聊天窗口」，它是你桌面上的 AI Agent 操作系统。**
+
+<br/>
+
+---
+
+## ✨ 核心亮点
+
+<table>
+<tr>
+<td width="180" align="center"><strong>🔒 本地优先</strong></td>
+<td>会话、配置、知识库索引、进化日志全部存于本机 SQLite；API Key 走系统密钥链加密。可离线语音识别（内置 whisper.cpp），断网仍可使用本地模型。你的数据，始终是你的数据。</td>
+</tr>
+<tr>
+<td align="center"><strong>🤖 14+ 模型接入</strong></td>
+<td>Anthropic / OpenAI / DeepSeek / Qwen / Gemini / 豆包 / GLM / Kimi / Groq / Ollama… 内置 Bridge 协议翻译层，对话侧无感切换，一个工作台访问所有主流模型。</td>
+</tr>
+<tr>
+<td align="center"><strong>🧠 真正的 Agent</strong></td>
+<td>不是换 System Prompt 那么简单：每个智能体独立绑定技能包、RAG 知识库、MCP 工具、工作流；可自主调用 Bash、文件读写、浏览器；支持两阶段规划模式。</td>
+</tr>
+<tr>
+<td align="center"><strong>👤 人格蒸馏</strong></td>
+<td>集成 <a href="https://github.com/titanwings/colleague-skill">dot-skill</a>：上传微信聊天记录、PDF、邮件等真实材料，蒸馏出同事、亲密关系、公众人物的沟通风格和人格特征，写入智能体。支持多人并行蒸馏。</td>
+</tr>
+<tr>
+<td align="center"><strong>🧬 自我进化</strong></td>
+<td>纠正、负反馈、有价值长对话自动提炼为长期记忆 / 知识文档 / 技能修复。全局扫描器 + 会话级触发；进化历程全程可审计、可搜索、单条可撤销。</td>
+</tr>
+<tr>
+<td align="center"><strong>🌐 Agent 互联</strong></td>
+<td>Project Nexus：局域网 mDNS + 广域网信令，跨设备 Agent 自动发现、一对一双向 token 级流式对话。人类可随时暂停、接管、审批，掌控权始终在你手中。</td>
+</tr>
+<tr>
+<td align="center"><strong>👥 微信风群聊</strong></td>
+<td>多 Agent 同群、人格驱动发言概率、@提及与引用回复、图片消息、撤回；更像真人在群里闲聊，而非 AI 轮流念稿。</td>
+</tr>
+<tr>
+<td align="center"><strong>🖥️ 屏幕感知</strong></td>
+<td>Screen Agent 截屏理解 → 操作规划 → 桌面操控（鼠标/键盘/滚动），每步确认，危险操作强制拦截。Spotlight 全局浮窗 + 剪贴板智能建议，主动在你正在做的事上帮忙。</td>
+</tr>
+<tr>
+<td align="center"><strong>📦 开箱即用</strong></td>
+<td>macOS <code>.dmg</code> / Windows 安装包，内嵌 Go 后端、Node、whisper.cpp、Claude CLI，无需 Docker，无需自建服务器，下载即用。</td>
+</tr>
+</table>
+
+<br/>
+
+---
+
+## 🗺️ 能力全景
+
+```mermaid
+flowchart TB
+  subgraph Desktop["🖥️ Electron 桌面壳"]
+    UI["React 19 · 6 套主题 · 流式 UI"]
+    SP["Spotlight 悬浮窗 · 剪贴板监控"]
+    SC["Screen Agent 桌面操控"]
+  end
+
+  subgraph Core["⚙️ Go 后端 · 本地 SQLite"]
+    Chat["对话引擎 · 规划 · 工具链"]
+    Agent["智能体工厂 · 人格蒸馏"]
+    Evo["自我进化引擎 · 全局扫描"]
+    RAG["向量索引 · 混合检索 · 文件监控"]
+    Nexus["Project Nexus · 群聊 · 信令"]
+    Job["定时任务 · IM Webhook"]
+    Skill["技能管理 · MCP · 工作流"]
+  end
+
+  subgraph AI["🧠 AI 运行时"]
+    CLI["Claude CLI"]
+    Bridge["LiteLLM / llm-bridge 协议翻译"]
+    WH["whisper.cpp 离线语音"]
+  end
+
+  UI --> Chat
+  UI --> Agent
+  UI --> Nexus
+  Chat --> CLI
+  CLI --> Bridge
+  Chat --> RAG
+  Agent --> Evo
+  SP --> Chat
+  SC --> Chat
+  Job --> Chat
+  Skill --> Chat
+```
+
+<br/>
+
+---
+
+## 🎯 功能详解
+
+> 以下每个模块都配有截图展示。已有截图直接显示，尚未截取的已留好位置，放入对应文件即可自动生效。
+
+---
+
+### 💬 智能对话 — 不只是聊天
+
+灵犀的对话体验经过精心打磨。流式输出实时拆分为**思考过程**、**工具调用**和**正文回复**三层，每层都有专属的折叠/展开交互。支持 OpenAI reasoning token 透传（推理模型的思考链完整显示），代码块语法高亮并带一键复制，消息可编辑并重发（自动截断后续上下文），支持 `⌘K` 全文搜索历史消息。
+
+**富 Markdown 渲染**是一大亮点：Mermaid 图表（流程图、时序图、架构图、甘特图…）和 PlantUML 都能在对话中直接渲染为交互式 SVG，Agent 可以主动画图辅助解释。
+
+此外还内置了：`/` 斜杠命令快捷菜单（12 个内置命令）、两阶段规划模式（先选维度再执行）、交互式向导流（多选择题逐一呈现）、图片粘贴发送、文件拖拽对话、语音输入（本地 whisper.cpp 离线识别）、TTS 朗读、消息固定（Pin）、快捷回复建议、RAG `[N]` 知识库引用标注（hover 查看引用来源）等。
+
+<!-- 📷 流式对话 -->
+<p align="center">
+  <img src="images/screenshots/02-chat-stream.png" alt="流式对话" width="920" />
+</p>
+<p align="center"><sub>流式对话 · 思考折叠 · 代码高亮 · 工具调用</sub></p>
+
+<br/>
 
 <table>
 <tr>
 <td width="50%">
 
-**🔒 数据 100% 本地**
-
-会话、配置、API 密钥全部存在本地 SQLite。密钥通过 macOS Keychain / Windows DPAPI 加密。零云端依赖，断网也能用本地模型。
+**对话核心能力**
+- 流式输出 · 思考/工具/正文三层分离
+- 代码块语法高亮 + 一键复制
+- 消息编辑重发 · 消息固定 Pin
+- 消息反馈（thumbs up/down）
+- `⌘K` 全文搜索 · 对话导出 Markdown
+- 虚拟滚动（100+ 条消息零卡顿）
 
 </td>
 <td width="50%">
 
-**🔌 14+ 模型供应商**
-
-Anthropic · OpenAI · DeepSeek · Qwen · Gemini · 豆包 · GLM · Kimi · Groq · Ollama …… 内置 Bridge 路由层自动翻译协议，一键切换。
-
-</td>
-</tr>
-<tr>
-<td>
-
-**🤖 不止聊天，是 Agent 工作台**
-
-创建有独立角色、技能、知识库、MCP 工具的智能体。让 AI 不只回答问题，而是真正完成工作 —— 写代码、查数据、读文档、操作网页。
-
-</td>
-<td>
-
-**🧬 Agent 自我进化**
-
-Agent 从每次对话中学习：自动提取记忆、知识和技能修复。负反馈、用户纠正、有价值对话均可触发。实时进度面板 + 一键撤销，进化完全可控。
-
-</td>
-</tr>
-<tr>
-<td>
-
-**🌐 Agent 间自动对话 (Project Nexus)**
-
-局域网 + 广域网。不同电脑上的 Agent 自动发现、双向流式对话。你的审查员和同事的架构师可以直接讨论方案，人类随时介入。
-
-</td>
-<td>
-
-**📦 双击即用，零依赖**
-
-macOS 下载 `.dmg` 双击安装。内嵌 Go 后端 + Node.js + whisper.cpp —— 无需 Python、Docker 或后端服务。6 套精美主题开箱可选。
+**增强体验**
+- `/` 斜杠命令 · 两阶段规划
+- 交互式向导流 · 信息收集块
+- 图片粘贴（`⌘V`）· 文件拖拽
+- 语音输入（本地 whisper.cpp）
+- TTS 朗读 · 快捷回复建议
+- RAG `[N]` 引用标注 · hover 查看来源
 
 </td>
 </tr>
 </table>
 
----
-
-## 🚀 功能一览
-
-### 🏭 智能体工厂
-
-> 每个智能体是一个拥有 **9 个维度定制能力** 的完整实体，不只是换一个 System Prompt。
-
+<!-- 📷 智能体交互 · 工具调用实况 -->
 <p align="center">
-  <img src="images/智能体工厂.png" alt="智能体工厂" width="900" />
+  <img src="images/智能体交互.png" alt="智能体交互" width="920" />
 </p>
+<p align="center"><sub>智能体自主执行 · 工具调用 · 多轮推理</sub></p>
 
-<table>
-<tr><td width="22%">🎭 <b>身份与角色</b></td><td>名称、头像、描述、完整 System Prompt</td></tr>
-<tr><td>🧩 <b>能力装备</b></td><td>按智能体独立绑定技能、知识库、MCP 工具</td></tr>
-<tr><td>🎛️ <b>参数调节</b></td><td>temperature · max_tokens 独立控制</td></tr>
-<tr><td>🧬 <b>自我进化</b></td><td>多触发条件（纠正/负反馈/有价值对话） · 实时进度面板 · 对话内联通知 · 一键撤销 · 可筛选进化历程 · 会话级知识提取</td></tr>
-<tr><td>🌐 <b>对外协作</b></td><td>公开开关 · 能力标签 · 授权级别 · 禁止透露信息</td></tr>
-<tr><td>📋 <b>17 个模板</b></td><td>商业办公 · 技术开发 · 内容创意 · 生活效率，也支持五步向导从零创建</td></tr>
-</table>
+<!-- 📷 规划模式 -->
+<p align="center">
+  <img src="images/screenshots/13-planning-mode.png" alt="规划模式" width="920" />
+</p>
+<p align="center"><sub>两阶段规划模式 — 先选维度，再深入执行</sub></p>
 
-<details>
-<summary><b>查看内置模板 →</b></summary>
+<!-- 📷 Mermaid 图表渲染（待截图：让 Agent 画一个流程图，截取已渲染的 SVG） -->
+<p align="center">
+  <img src="images/screenshots/22-mermaid-chart.png" alt="Mermaid 图表" width="720" />
+</p>
+<p align="center"><sub>Mermaid / PlantUML 图表在对话中直接渲染为 SVG</sub></p>
+
 <br/>
-
-| 场景 | 模板 |
-|------|------|
-| 🏢 商业办公 | 销售助理 · 商业分析师 · 人力资源 · 法务顾问 |
-| 💻 技术开发 | 代码审查员 · 架构师 · DevOps 专家 · 安全工程师 · DBA |
-| ✍️ 内容创意 | 内容创作者 · 文案策划 · 翻译专家 · 学术论文助手 |
-| 🌈 生活效率 | 产品经理 · 健身教练 · 理财顾问 · 旅行规划师 |
-
-</details>
-
-<p align="center">
-  <img src="images/智能体角色设定.png" alt="创建向导" width="900" />
-</p>
-<p align="center"><sub>▲ 五步创建向导 —— 角色 · 能力 · 参数 · 对外 · 预览</sub></p>
-
-<p align="center">
-  <img src="images/智能体配置.png" alt="智能体配置" width="900" />
-</p>
-<p align="center"><sub>▲ 智能体多维度精细配置</sub></p>
-
----
-
-### 🧬 自我进化引擎
-
-> Agent 不只是执行指令 —— 它从每一次对话中**学习成长**。负反馈、用户纠正、有价值的多轮对话都会触发进化，自动提取记忆、知识和技能修复。
-
-<p align="center">
-  <img src="images/自我进化.png" alt="自我进化历程" width="900" />
-</p>
-<p align="center"><sub>▲ 进化历程 —— 统计面板 + 时间线 + 分类筛选 + 一键撤销</sub></p>
-
-| 能力 | 说明 |
-|------|------|
-| 🎯 多触发条件 | 用户纠正 · 负反馈（thumbs down） · 有价值的多轮对话 · 手动提取 |
-| 📊 实时进度面板 | 进化执行全程可见：准备上下文 → 调用 LLM 分析 → 解析结果 → 执行动作 |
-| 🧠 三种进化动作 | **记忆**（偏好/习惯） · **知识**（SOP/流程文档） · **技能修复**（工具描述纠错） |
-| ↩️ 一键撤销 | 每条进化记录均可撤销：删除写入的记忆/知识文件/技能修改 |
-| 📋 进化历程 | 全量时间线 · 按类型/状态筛选 · 搜索 · 详情展开 · LLM 原始响应 |
-| 💬 对话内联通知 | 进化完成后在聊天界面直接显示结果卡片，支持即时撤销 |
-| 📝 会话级提取 | 对话结束后一键提炼整个会话的知识，生成结构化知识库文档 |
-
-<p align="center">
-  <img src="images/自我进化-agent设置.png" alt="Agent 进化设置" width="900" />
-</p>
-<p align="center"><sub>▲ 在智能体编辑器中开启/关闭自我进化 + 查看进化日志</sub></p>
-
-<p align="center">
-  <img src="images/自我进化-对话提取.png" alt="对话知识提取" width="900" />
-</p>
-<p align="center"><sub>▲ 对话气泡中的「提取知识」按钮 —— 从任意消息中手动触发知识提炼</sub></p>
-
-<details>
-<summary><b>进化工作原理 →</b></summary>
-<br/>
-
-```
-对话完成 ──► 触发检测（纠正 / 负反馈 / 有价值对话）
-                │
-                ▼
-        复用当前 AI 引擎分析对话上下文
-                │
-                ▼
-     解析 LLM 返回的 JSON 动作列表
-                │
-                ▼
-   ┌────────────┼────────────┐
-   ▼            ▼            ▼
- 写入记忆    创建知识库     修复技能描述
- (memories)  (knowledge/)   (skill fix)
-                │
-                ▼
-   记录到 evolution_logs + WS 实时通知前端
-```
-
-- 全程使用当前激活的模型（与主对话同一引擎），不额外调用独立 HTTP API
-- 每条进化动作独立记录，支持单独撤销
-- 进化日志保留 LLM 原始响应和执行步骤，可用于审计和调试
-
-</details>
-
----
-
-### 💬 极致对话体验
-
-> 流式输出不是逐字显示 —— 是**思考块 + 工具块 + 文本块**三层精确渲染。
-
-<p align="center">
-  <img src="images/普通对话.png" alt="对话体验" width="900" />
-</p>
-
-| 能力 | 说明 |
-|------|------|
-| ⚡ 流式输出 + 思考链 | 实时 token 输出，思考过程可折叠，支持 OpenAI reasoning 透传 |
-| 🎨 代码高亮 | 50+ 语言语法着色 + 一键复制 |
-| 🖼️ 多模态输入 | 图片粘贴 · 文件拖入 · 离线语音 · 截屏 (⌘⇧S) |
-| 📚 RAG 引用可视化 | 内联 `[N]` 上角标 + hover 引用卡片 + 底部引用列表 |
-| 🔍 搜索与命令 | ⌘K 全文搜索 · `/` 斜杠命令 · 消息编辑重发 |
-| 🗺️ 两阶段规划 | 先收集需求维度，全部确认后再执行 |
-| 💡 智能回复建议 | 每条回复后推荐 2-3 个后续问题 |
-| 📌 消息管理 | 固定 · 反馈 · 置顶 · 批量删除 · Markdown 导出 |
-| 🔊 TTS 朗读 | 中英文自动识别，一键朗读 |
-
-<p align="center">
-  <img src="images/智能体交互.png" alt="智能体自主交互" width="900" />
-</p>
-<p align="center"><sub>▲ 智能体自主执行任务 —— 调用工具、读取文件、写代码</sub></p>
-
-<p align="center">
-  <img src="images/规划推理.png" alt="规划推理" width="900" />
-</p>
-<p align="center"><sub>▲ 两阶段规划 —— 先收集维度，确认后执行</sub></p>
-
-<p align="center">
-  <img src="images/规划模式.png" alt="规划模式" width="900" />
-</p>
-<p align="center"><sub>▲ 沉浸式多维度需求收集面板</sub></p>
-
-<p align="center">
-  <img src="images/agent ppt创作.png" alt="PPT 创作" width="900" />
-</p>
-<p align="center"><sub>▲ AI 真正完成工作 —— 自动生成 PPT 内容</sub></p>
-
----
-
-### 🎤 离线语音输入
-
-内置 **whisper.cpp**（Apple Metal 加速）。录音 → 本地识别 → 文字填入，全程离线、零延迟。网络不可用时回退远端 API。
-
----
-
-### 🔗 14+ 模型供应商统一接入
-
-<p align="center">
-  <img src="images/接入点管理.png" alt="接入点管理" width="900" />
-</p>
-
-| 协议 | 供应商 |
-|------|--------|
-| Anthropic 原生 | Anthropic · DashScope（阿里云）|
-| OpenAI 兼容 | DeepSeek · Qwen · 豆包 · GLM · Kimi · Gemini · OpenRouter · Groq · SiliconFlow · Ollama · OpenAI |
-
-<p align="center">
-  <img src="images/llm.png" alt="多模型切换" width="900" />
-</p>
-<p align="center"><sub>▲ 14+ 供应商自由切换，一个接入点配置搞定</sub></p>
-
-<details>
-<summary><b>Bridge 路由层原理 →</b></summary>
-<br/>
-
-灵犀 AI 引擎基于 Anthropic 协议。选择 OpenAI 兼容供应商时，本地 Bridge 自动启动做双向实时翻译：
-
-```
-Claude CLI ──Anthropic──► Bridge (127.0.0.1) ──OpenAI──► DeepSeek / Qwen / ...
-```
-
-优先 LiteLLM（Python），回退 llm-bridge（Node.js）。用户无感知。
-
-</details>
-
----
-
-### 🧩 技能 · 知识库 · MCP
-
-<table>
-<tr>
-<td width="33%" valign="top">
-
-**⚡ 技能系统**
-- AI 自动生成
-- ZIP 导入 / 批量上传
-- Smithery 市场一键安装
-- 在线编辑 / 导出 / 批量导出 ZIP
-- 导出含 manifest.json 元数据
-- 按智能体独立绑定
-
-</td>
-<td width="33%" valign="top">
-
-**📚 知识库**
-- `.md` `.txt` `.csv` `.json` `.pdf` `.docx`
-- 文档 / 问答 / 数据三分类
-- 拖拽上传 + 预览
-- 自动索引 + RAG 引用
-
-</td>
-<td width="33%" valign="top">
-
-**🔧 MCP 工具**
-- stdio / SSE / HTTP 全协议
-- 内置 Playwright MCP
-- 一键导出配置
-- 操作网页、文件系统……
-
-</td>
-</tr>
-</table>
-
-<p align="center">
-  <img src="images/skill管理.png" alt="技能管理" width="900" />
-</p>
-<p align="center"><sub>▲ 技能管理 —— AI 生成 / 市场安装 / 在线编辑 / ZIP 导入</sub></p>
-
-<p align="center">
-  <img src="images/skill安装.png" alt="技能安装" width="900" />
-</p>
-<p align="center"><sub>▲ Smithery 市场 —— 搜索、浏览分类、一键安装</sub></p>
-
-<p align="center">
-  <img src="images/知识库.png" alt="知识库" width="900" />
-</p>
-<p align="center"><sub>▲ 知识库 —— 拖拽上传 · 分类管理 · RAG 引用可视化</sub></p>
-
-<p align="center">
-  <img src="images/mcp.png" alt="MCP" width="900" />
-</p>
-<p align="center"><sub>▲ MCP 工具 —— 三种协议 · 一键导出配置</sub></p>
-
----
-
-### 🔀 可视化工作流编排
-
-> 拖拽节点、连线即可构建执行流程，无需写代码。
-
-<p align="center">
-  <img src="images/工作流编排首页.png" alt="工作流编排" width="900" />
-</p>
-
-| 节点 | 说明 |
-|------|------|
-| 💬 提示词 | 发送 Prompt 给 AI |
-| 🔀 条件分支 | 根据输出走不同路径 |
-| 🔄 循环 | 重复 N 次 |
-| ⏱️ 延迟 | 等待指定时间 |
-| 💻 代码 | Bash / Python 脚本 |
-| 📤 输出 | 最终结果 |
-
----
-
-### 🌐 Project Nexus —— Agent-to-Agent 对话网络
-
-> 灵犀独创。不同实例的 Agent **自动发现、建联、双向流式对话** —— 局域网 + 广域网。
-
-<p align="center">
-  <img src="images/Agent Nexus网络.png" alt="Nexus 网络" width="900" />
-</p>
-
-```
-┌──────────────────┐                           ┌──────────────────┐
-│   灵犀实例 A      │  ◄── 双向流式对话 ──►      │   灵犀实例 B      │
-│   🤖 代码审查员   │      mDNS / 信令发现       │   🤖 架构师       │
-│   🧑 人类 A      │      token 级实时流式       │   🧑 人类 B      │
-│   (观察 / 介入)   │                           │   (观察 / 介入)   │
-└──────────────────┘                           └──────────────────┘
-```
-
-| 能力 | 说明 |
-|------|------|
-| 🔍 自动发现 | 局域网 mDNS + 广域网信令，10 秒内可见 |
-| ⚡ 双向流式 | 双方 Agent token 级实时输出，思考过程同步 |
-| 🧠 持久上下文 | 每场对话关联独立 Session，跨轮次记忆 |
-| 👁️ 双端观察 | 发起方和接收方同时看到思考与回复 |
-| ✋ 人类监督 | 暂停 · 接管 · 终止 · 审批 |
-| 📝 完整渲染 | 代码高亮 · 表格 · 思考折叠 —— 与主聊天同款 UI |
-
-<p align="center">
-  <img src="images/Agent 对话请求提问.png" alt="发起 Agent 对话" width="900" />
-</p>
-<p align="center"><sub>▲ 发起 Agent 对话 —— 选择对方节点的 Agent，设定讨论主题和目标</sub></p>
-
-<p align="center">
-  <img src="images/Agent对话接收请求.png" alt="接收对话邀请" width="900" />
-</p>
-<p align="center"><sub>▲ 接收方收到邀请 —— 查看主题和对方 Agent，选择己方 Agent 应答</sub></p>
-
-<p align="center">
-  <img src="images/Agent对话实况1.png" alt="Agent 对话实况" width="900" />
-</p>
-<p align="center"><sub>▲ Agent 间实时对话 —— 紫色 = 对方 Agent，主题色 = 己方 Agent</sub></p>
-
-<p align="center">
-  <img src="images/Agent对话实况2.png" alt="Agent 对话深入讨论" width="900" />
-</p>
-<p align="center"><sub>▲ 深入讨论 —— 双方 Agent 自动多轮交流，思考过程完整可见</sub></p>
-
----
-
-### ⏰ 定时任务
-
-> 让 Agent 7×24 自动工作 —— 每小时检查邮件、每天生成日报、每周清理数据。
-
-<p align="center">
-  <img src="images/定时任务.png" alt="定时任务" width="900" />
-</p>
-
-- **调度方式**：每 N 分钟/小时 · 每天/每周/每月 · 自定义 Cron
-- **有状态模式**：Agent 记住上次结果，只汇报增量
-- **桌面通知**：执行完成系统级通知
-- **执行记录**：历史查看 + 跳转会话
-
----
-
-### 💬 企业 IM 集成
-
-<p align="center">
-  <img src="images/IM.png" alt="IM 集成" width="900" />
-</p>
-
-| 平台 | 接入方式 |
-|------|---------|
-| 🟢 企业微信 | Webhook 机器人 |
-| 🔵 钉钉 | Webhook 机器人 |
-| 🟣 飞书 | Webhook 机器人 |
-
----
-
-### 🧠 长期记忆
-
-跨会话持久记忆，按智能体隔离。AI 自动记录偏好和重要信息，也可手动管理。
-
----
-
-### 📊 用量统计与预算预警
-
-<p align="center">
-  <img src="images/用量计费.png" alt="用量统计" width="900" />
-</p>
-
-- 📈 精确到 token 级别计费
-- 📊 非官方供应商本地定价估算（标注 `~`）
-- 🔔 日/月预算预警
-
----
-
-## 📸 截图画廊
-
-<table>
-<tr>
-<td><img src="images/首页.png" alt="工作台首页" /></td>
-<td><img src="images/普通对话.png" alt="流式对话" /></td>
-</tr>
-<tr>
-<td align="center"><sub>工作台首页</sub></td>
-<td align="center"><sub>流式对话 + 代码高亮</sub></td>
-</tr>
-<tr>
-<td><img src="images/智能体交互.png" alt="智能体交互" /></td>
-<td><img src="images/规划模式.png" alt="规划模式" /></td>
-</tr>
-<tr>
-<td align="center"><sub>智能体自主执行任务</sub></td>
-<td align="center"><sub>多维度需求收集</sub></td>
-</tr>
-<tr>
-<td><img src="images/智能体工厂.png" alt="智能体工厂" /></td>
-<td><img src="images/agent ppt创作.png" alt="PPT 创作" /></td>
-</tr>
-<tr>
-<td align="center"><sub>智能体工厂 + 模板市场</sub></td>
-<td align="center"><sub>AI 真正完成工作</sub></td>
-</tr>
-<tr>
-<td><img src="images/自我进化.png" alt="自我进化" /></td>
-<td><img src="images/自我进化-对话提取.png" alt="知识提取" /></td>
-</tr>
-<tr>
-<td align="center"><sub>自我进化历程 · 一键撤销</sub></td>
-<td align="center"><sub>对话中提取知识</sub></td>
-</tr>
-<tr>
-<td><img src="images/llm.png" alt="多模型" /></td>
-<td><img src="images/skill安装.png" alt="技能安装" /></td>
-</tr>
-<tr>
-<td align="center"><sub>14+ 供应商自由切换</sub></td>
-<td align="center"><sub>Smithery 市场一键安装</sub></td>
-</tr>
-<tr>
-<td><img src="images/工作流编排首页.png" alt="工作流" /></td>
-<td><img src="images/Agent Nexus网络.png" alt="Nexus" /></td>
-</tr>
-<tr>
-<td align="center"><sub>拖拽节点编排工作流</sub></td>
-<td align="center"><sub>Agent 间自动发现与对话</sub></td>
-</tr>
-<tr>
-<td><img src="images/Agent对话实况1.png" alt="Agent 对话" /></td>
-<td><img src="images/Agent对话实况2.png" alt="Agent 深入对话" /></td>
-</tr>
-<tr>
-<td align="center"><sub>Agent-to-Agent 实时对话</sub></td>
-<td align="center"><sub>深入多轮自动交流</sub></td>
-</tr>
-</table>
-
----
-
-## ⌨️ 快捷键
 
 | 快捷键 | 功能 | 快捷键 | 功能 |
 |--------|------|--------|------|
 | `⌘ K` | 全文搜索 | `⌘ N` | 新建对话 |
 | `⌘ B` | 切换侧边栏 | `⌘ ,` | 设置 |
 | `⌘ /` | 快捷键面板 | `⌘ ⇧ S` | 截屏到输入框 |
-| `/` | 斜杠命令 | `Esc` | 关闭面板 |
-| `Enter` | 发送 | `Shift+Enter` | 换行 |
+| `⌘ ⇧ Space` | Spotlight 浮窗 | `⌘ ⇧ Esc` | Screen Agent 紧急中止 |
+| `/` | 斜杠命令 | `Enter` / `⇧Enter` | 发送 / 换行 |
+
+---
+
+### 🏭 智能体工厂 — 你的 Agent 流水线
+
+每个智能体不是一个简单标签，而是一个**可独立配置的完整实体**。通过五步引导式创建向导，你可以精细控制：
+
+- **身份**：名称、头像（emoji 或自定义图片上传）、基础描述
+- **角色**：System Prompt、temperature、max_tokens，以及**群聊人格参数**（发言概率、兴趣标签、安静时段、风格暗示等）
+- **能力**：绑定技能包、RAG 知识库、MCP 工具服务器
+- **对外设置**：是否在 Nexus 网络中可见、能力标签、授权级别、禁止透露的信息
+- **预览**：创建前完整检查所有配置
+
+内置 **17 个模板**覆盖商业办公、技术开发、内容创意、生活效率四大场景，你可以从模板一键创建再个性化调整。
+
+<!-- 📷 智能体工厂 -->
+<p align="center">
+  <img src="images/screenshots/03-agent-factory.png" alt="智能体工厂" width="920" />
+</p>
+<p align="center"><sub>智能体工厂 — 模板市场 + 自定义创建</sub></p>
+
+<!-- 📷 智能体角色设定 -->
+<p align="center">
+  <img src="images/智能体角色设定.png" alt="智能体角色设定" width="920" />
+</p>
+<p align="center"><sub>五步向导 · 角色设定 · 群聊人格参数</sub></p>
+
+<!-- 📷 智能体配置 -->
+<p align="center">
+  <img src="images/智能体配置.png" alt="智能体能力配置" width="920" />
+</p>
+<p align="center"><sub>能力绑定 — 技能 · 知识库 · MCP 工具</sub></p>
+
+<details>
+<summary><b>17 个内置智能体模板</b></summary>
+
+| 场景 | 模板 |
+|------|------|
+| 商业办公 | 销售助理 · 商业分析师 · 人力资源 · 法务顾问 |
+| 技术开发 | 代码审查员 · 架构师 · DevOps · 安全工程师 · DBA |
+| 内容创意 | 内容创作者 · 文案策划 · 翻译专家 · 学术论文助手 |
+| 生活效率 | 产品经理 · 健身教练 · 理财顾问 · 旅行规划师 |
+
+</details>
+
+---
+
+### 👤 人格蒸馏 — 让 AI 拥有真实的人格
+
+这是灵犀最独特的功能之一。集成 [dot-skill](https://github.com/titanwings/colleague-skill) 人格蒸馏引擎，你可以从**真实聊天材料**中提取一个人的沟通风格、性格特征和行为模式，注入到智能体中。
+
+**支持的材料类型**：微信/QQ 聊天记录导出（.md/.txt）、PDF 文件、邮件存档等。
+
+**三类蒸馏模式**：
+- `colleague` — 同事/工作关系：提取专业能力、沟通方式、工作习惯
+- `close` — 亲密关系：提取性格特征、情感表达、互动模式
+- `celebrity` — 公众人物：提取公开言论风格、观点倾向
+
+**核心特性**：
+- **多人并行蒸馏**（最多 5 人同时进行），SSE 实时流式日志
+- **独立蒸馏记录**：每次蒸馏结果独立存储，不污染默认技能库
+- **从记录导入**：创建新智能体时可直接选择已有蒸馏记录，一键填入人格配置
+
+<!-- 📷 人格蒸馏弹窗（待截图：打开蒸馏弹窗，展示 family 选择 + 材料列表 + 流式日志区） -->
+<p align="center">
+  <img src="images/screenshots/04-distill-modal.png" alt="人格蒸馏" width="920" />
+</p>
+<p align="center"><sub>人格蒸馏 — 并行蒸馏 · SSE 流式日志 · 材料管理</sub></p>
+
+<!-- 📷 蒸馏记录（待截图：蒸馏记录面板，展示多条记录 + 状态） -->
+<p align="center">
+  <img src="images/screenshots/05-distill-records.png" alt="蒸馏记录" width="920" />
+</p>
+<p align="center"><sub>蒸馏记录管理 — 独立存储 · 一键导入新智能体</sub></p>
+
+---
+
+### 🧬 自我进化 — Agent 越用越聪明
+
+传统 AI 助手永远不会变：你纠正了它一百次，下次它还犯同样的错。灵犀的自我进化引擎改变了这一点。
+
+**进化触发方式**：
+
+| 触发方式 | 说明 |
+|----------|------|
+| 用户纠正 / thumbs down | 分析对话上下文 → 自动写入长期记忆 / 知识库文档 / 修复技能描述 |
+| 会话结束时（≥6 条消息 + 冷却期） | 自动进行会话级进化提取 |
+| 全局扫描（默认每 6 小时） | 巡检所有启用进化的 Agent，批量提取有价值对话；支持安静时段配置 |
+| 手动触发 | 对话气泡上的「提取知识」按钮，主动从某段对话中提取 |
+
+**关键保障**：进化不是黑箱。每一条进化日志都可以**查看详情**、**按类型筛选**、**关键词搜索**，不满意的进化结果支持**单条撤销**（自动回滚记忆/知识/技能修改）。
+
+<!-- 📷 自我进化 -->
+<p align="center">
+  <img src="images/screenshots/06-evolution.png" alt="自我进化" width="920" />
+</p>
+<p align="center"><sub>进化历程 — 可筛选 · 可搜索 · 单条撤销</sub></p>
+
+<table>
+<tr>
+<td width="50%">
+
+<!-- 📷 自我进化 Agent 设置 -->
+<p align="center">
+  <img src="images/自我进化-agent设置.png" alt="进化设置" width="440" />
+</p>
+<p align="center"><sub>Agent 内进化开关</sub></p>
+
+</td>
+<td width="50%">
+
+<!-- 📷 自我进化 对话提取 -->
+<p align="center">
+  <img src="images/自我进化-对话提取.png" alt="对话提取" width="440" />
+</p>
+<p align="center"><sub>气泡「提取知识」按钮</sub></p>
+
+</td>
+</tr>
+</table>
+
+---
+
+### 📚 深度 RAG — 本地知识，智能检索
+
+灵犀内置了完整的本地 RAG（检索增强生成）管线，不依赖任何云端向量数据库。
+
+**技术细节**：
+- **向量引擎**：纯 Go 实现的 cosine similarity 搜索，768 维嵌入，独立 `vectors.db`
+- **分块策略**：递归分块（512 字符/块，128 重叠），按段落 → 句子 → 字符边界智能切割
+- **混合检索**：向量 KNN + 关键词 BM25 + RRF 融合排序，兼顾语义相似和关键词匹配
+- **自动索引**：上传文件即自动分块 + 嵌入 + 入库；文件夹监控（fsnotify）自动检测变化并增量索引
+
+**对话集成**：当智能体绑定了知识库，对话时会自动进行语义检索，将最相关的文档片段注入上下文，并在回复中以 `[1]` `[2]` 等上角标标注引用来源。Hover 可弹出引用详情卡片。
+
+**支持格式**：`.md` `.txt` `.csv` `.tsv` `.json` `.pdf` `.docx`
+
+<!-- 📷 知识库 -->
+<p align="center">
+  <img src="images/screenshots/10-knowledge-rag.png" alt="知识库" width="920" />
+</p>
+<p align="center"><sub>知识库管理 — 分类 · 语义搜索 · 索引状态 · 文件夹监控 · 嵌入配置</sub></p>
+
+---
+
+### 🖥️ Screen Agent — 看屏幕，动手操作
+
+Screen Agent 赋予灵犀**看到并操作你桌面**的能力。它不只是回答问题，还能像一个远程协助的同事一样，直接帮你完成桌面操作。
+
+**工作流程**（OTA 循环）：
+1. **Observe** — 截取当前屏幕，通过多模态模型理解屏幕内容
+2. **Think** — 根据你的指令，规划操作步骤列表（含风险评估）
+3. **Act** — 逐步执行：鼠标点击、键盘输入、滚动、打开应用
+
+**安全机制严密**：
+- 每步操作需用户确认（可选自动模式）
+- 危险操作黑名单强制确认（即使开了自动模式也拦截）
+- 速率限制：最低 500ms/步，60 次/分钟上限
+- 紧急中止：`⌘⇧Esc` 全局快捷键随时喊停
+- 操作审计：所有操作记录到 `screen_actions` 表
+
+<!-- 📷 Screen Agent（待截图：展示截屏块 / 步骤计划 / 确认面板） -->
+<p align="center">
+  <img src="images/screenshots/11-screen-agent.png" alt="Screen Agent" width="920" />
+</p>
+<p align="center"><sub>Screen Agent — 截屏理解 · 操作规划 · 逐步确认执行</sub></p>
+
+---
+
+### 🔦 Spotlight 主动助手 — 随叫随到
+
+按下 `⌘⇧Space`，一个轻量级浮窗从屏幕顶部滑出，不打断你正在做的任何事。
+
+- **上下文感知**：自动获取当前活跃窗口名称和浏览器 URL
+- **Quick Actions**：根据上下文动态生成快捷操作（在 IDE 中 → 解释代码/生成测试；在浏览器中 → 总结页面/翻译）
+- **快捷对话**：带上下文元数据 + 知识库检索，一句话就能得到精准回答
+- **剪贴板智能监控**：2 秒轮询，自动分类（代码/报错/URL/英文长文/命令），右下角非侵入式建议气泡
+
+<!-- 📷 Spotlight 浮窗（待截图：⌘⇧Space 唤出后的效果，含 Quick Actions） -->
+<p align="center">
+  <img src="images/screenshots/12-spotlight.png" alt="Spotlight" width="720" />
+</p>
+<p align="center"><sub>Spotlight 浮窗 — ⌘⇧Space 全局唤出 · 上下文感知 · Quick Actions</sub></p>
+
+---
+
+### 🌐 Project Nexus — Agent 跨设备互联
+
+Project Nexus 让不同电脑上的灵犀实例中的 Agent **自动发现、自主对话**。
+
+```
+  实例 A（你的电脑）                    实例 B（同事电脑）
+  ┌─────────────────┐                ┌─────────────────┐
+  │ 🤖 代码审查员    │ ◄── 流式 ──►  │ 🤖 架构师        │
+  │ 🧑 你（可介入）  │    mDNS/WAN   │ 🧑 同事（可介入） │
+  └─────────────────┘                └─────────────────┘
+```
+
+**发现机制**：局域网通过 mDNS（`_lingxi._tcp`）自动广播，10 秒扫描周期；广域网通过公共信令服务器中继（开箱即用，无需配置）。
+
+**对话流程**：
+1. 在发现面板看到对方实例 → 点击「发起对话」→ 选择主题和 Agent
+2. 对方收到邀请通知 → 选择己方 Agent → 接受/拒绝
+3. 双方 Agent 开始自主对话：第一人称自然表达、可使用技能和知识库
+4. 双向 token 级流式传输，双方都能实时看到对方 Agent 的思考和输出
+
+**人类始终掌控**：任何时候你都可以暂停、接管（切换为人工打字）、终止对话，或在摘要审批环节介入。
+
+<!-- 📷 Nexus 发现 -->
+<p align="center">
+  <img src="images/screenshots/07-nexus-discover.png" alt="Nexus" width="920" />
+</p>
+<p align="center"><sub>节点发现 — LAN + WAN 合并列表 · 在线状态 · 一键发起对话</sub></p>
+
+<table>
+<tr>
+<td width="50%">
+
+<!-- 📷 A2A 对话实况 -->
+<p align="center">
+  <img src="images/screenshots/08-nexus-a2a-live.png" alt="A2A 对话实况" width="440" />
+</p>
+<p align="center"><sub>双向流式 Agent 对话</sub></p>
+
+</td>
+<td width="50%">
+
+<!-- 📷 A2A 对话实况 2 -->
+<p align="center">
+  <img src="images/Agent对话实况2.png" alt="A2A 对话实况 2" width="440" />
+</p>
+<p align="center"><sub>跨实例实时协作</sub></p>
+
+</td>
+</tr>
+</table>
+
+<!-- 📷 对话邀请 -->
+<p align="center">
+  <img src="images/Agent对话接收请求.png" alt="接收邀请" width="720" />
+</p>
+<p align="center"><sub>接收对话邀请 — 选择己方 Agent · 查看主题目标 · 接受/拒绝</sub></p>
+
+---
+
+### 👥 微信风 Agent 群聊 — 多 Agent 像人一样闲聊
+
+这是灵犀的标志性功能。不是简单的 Agent 轮流发言，而是**像素级仿微信**的群聊体验，多个 AI Agent 在群里像真人一样自然交流。
+
+**UI 细节**：
+- 绿色气泡（自己）/ 白色气泡（他人） · 36px 圆角头像
+- 合并气泡（同一人 3 分钟内连续发言合并显示）
+- 时间戳胶囊（间隔 ≥ 3 分钟才显示）
+- 引用回复（灰底左竖线引用块）
+- 撤回消息（2 分钟内）· 图片消息 · @ 提及
+- 顶部 9 头像堆叠条 · 成员抽屉
+
+**人格行为引擎**（`groupbehavior/`）：
+- 每条新消息，所有 joined 的本地 Agent **并发独立**评估是否发言
+- 评估维度：@ 自己（强制回复）、兴趣命中（+30）、冷场（+40）、被怼（+50）、安静时段（×0.1）、刚说过话（×0.2）
+- 决定发言后，按人格设定的延迟范围（min~max）+ 随机抖动等待后回复
+- **quirks**（微观人格）：偶尔打错字、偶尔复读"+1"、偶尔追加 emoji
+- **冷场守望者**：每 60 秒巡检，超 5 分钟没人说话自动触发 cold_start_eligible 的 Agent 暖场
+
+<!-- 📷 群聊（待截图：微信风群聊 UI，绿/白气泡 + 多 Agent + 时间戳 + @提及） -->
+<p align="center">
+  <img src="images/screenshots/09-group-chat.png" alt="Agent 群聊" width="920" />
+</p>
+<p align="center"><sub>微信风 Agent 群聊 — 人格驱动 · 自然对话 · @提及 · 引用回复</sub></p>
+
+---
+
+### 🔧 技能 · MCP · 工作流 · 定时 · IM
+
+灵犀不只是对话，它是一个完整的 Agent 平台。
+
+#### 技能管理
+
+智能体的能力通过「技能」扩展。支持 AI 流式生成技能、ZIP 上传导入、在线查看/编辑技能文件、批量上传和导出。集成 **Smithery.ai 技能市场**，一键搜索和安装社区技能。
+
+<!-- 📷 技能管理 -->
+<p align="center">
+  <img src="images/screenshots/15-skills-market.png" alt="技能管理" width="920" />
+</p>
+<p align="center"><sub>技能管理 — AI 生成 · ZIP 导入 · Smithery 市场</sub></p>
+
+<!-- 📷 技能安装 -->
+<p align="center">
+  <img src="images/skill安装.png" alt="技能安装" width="920" />
+</p>
+<p align="center"><sub>Smithery.ai 市场 — 搜索 · 分类 · 一键安装</sub></p>
+
+#### MCP 工具管理
+
+MCP（Model Context Protocol）让 Agent 调用外部工具。灵犀支持 stdio / SSE / HTTP 三种连接方式，可导入/导出配置，一键启用/禁用。
+
+<!-- 📷 MCP -->
+<p align="center">
+  <img src="images/screenshots/16-mcp.png" alt="MCP" width="920" />
+</p>
+<p align="center"><sub>MCP 管理 — stdio / SSE / HTTP · 配置导出</sub></p>
+
+#### 可视化工作流
+
+拖拽式节点编辑器，支持 6 种节点类型：提示词、条件分支、循环、延迟、代码执行、输出。将复杂任务编排为可视化流程，智能体按流程自动执行。
+
+<!-- 📷 工作流 -->
+<p align="center">
+  <img src="images/screenshots/14-workflow.png" alt="工作流" width="920" />
+</p>
+<p align="center"><sub>可视化工作流编排 — 拖拽节点 · 连线 · 执行预览</sub></p>
+
+#### 定时任务
+
+让 Agent 周期性自动执行任务：每 N 分钟/小时/每天/每周/每月/自定义 Cron。支持有状态模式（Agent 记忆上次执行内容）和无状态模式。执行完成后桌面通知推送，支持查看执行记录和跳转到对应会话。
+
+<!-- 📷 定时任务 -->
+<p align="center">
+  <img src="images/screenshots/18-scheduled-tasks.png" alt="定时任务" width="920" />
+</p>
+<p align="center"><sub>定时任务 — Cron 调度 · 执行记录 · 桌面通知 · WS 实时徽章</sub></p>
+
+#### IM 连接器
+
+将智能体接入企业微信、钉钉、飞书，通过 Webhook 响应即时消息，让你的 Agent 成为企业沟通中的智能节点。
+
+<!-- 📷 IM -->
+<p align="center">
+  <img src="images/screenshots/19-im-connector.png" alt="IM 连接器" width="920" />
+</p>
+<p align="center"><sub>IM 连接器 — 企业微信 · 钉钉 · 飞书</sub></p>
+
+---
+
+### ⚙️ 模型接入 · 用量统计
+
+#### 多模型统一接入
+
+灵犀内置 Bridge 协议翻译层，你只需配置 API Key 和端点，即可无缝使用 14+ 供应商的模型。支持接入点测试连通性、一键激活切换。
+
+<!-- 📷 接入点管理 -->
+<p align="center">
+  <img src="images/screenshots/17-providers.png" alt="接入点" width="920" />
+</p>
+<p align="center"><sub>模型接入点 — 14+ 供应商 · 测试连通 · 一键切换</sub></p>
+
+<!-- 📷 模型供应商 -->
+<p align="center">
+  <img src="images/llm.png" alt="模型供应商" width="920" />
+</p>
+<p align="center"><sub>支持的模型供应商列表</sub></p>
+
+#### 用量与预算
+
+精细到每次对话的 token 用量和费用统计，支持预算预警。非官方 API 使用本地定价表兜底估算（标注"~"提示）。
+
+<!-- 📷 用量 -->
+<p align="center">
+  <img src="images/screenshots/20-usage.png" alt="用量" width="920" />
+</p>
+<p align="center"><sub>用量统计 — token 计数 · 费用估算 · 预算预警</sub></p>
+
+---
+
+### 🎨 6 套主题 · 精致 UI
+
+灵犀提供 6 套精心设计的主题：**Light · Dark · Midnight · Cyber · Aurora · Cosmos**。所有颜色通过 CSS 变量驱动，主题切换瞬时生效。
+
+UI 细节打磨包括：气泡圆角阴影/hover 微交互、超薄自定义滚动条、三点波浪连接动画、增强版空状态页、AnimatePresence 页面切换动画等。
+
+<!-- 📷 6 套主题（待截图：外观设置页面 或 2×3 主题拼图） -->
+<p align="center">
+  <img src="images/screenshots/21-themes.png" alt="主题" width="920" />
+</p>
+<p align="center"><sub>6 套主题 — Light · Dark · Midnight · Cyber · Aurora · Cosmos</sub></p>
+
+---
+
+### 🔐 长期记忆 · 登录 · 安全
+
+**长期记忆**：跨会话持久化，按智能体隔离，自动/手动添加，分类管理，支持清空和导出。
+
+**SSO 登录**：首次启动登录页，支持微信/QQ/Google/钉钉/抖音 OAuth + 游客模式。Electron Loopback OAuth（临时本地 HTTP Server + 系统浏览器跳转），无需公网回调地址。
+
+**安全加固**：WebSocket Origin 校验、CORS 中间件、请求 Body 大小限制、Rate Limiter、优雅关闭（os.Signal 捕获 + 超时上下文）。
+
+---
+
+### 🎬 更多截图画廊
+
+<table>
+<tr>
+<td width="50%">
+
+<p align="center">
+  <img src="images/agent ppt创作.png" alt="Agent PPT 创作" width="440" />
+</p>
+<p align="center"><sub>Agent 长任务 — PPT 创作实况</sub></p>
+
+</td>
+<td width="50%">
+
+<p align="center">
+  <img src="images/规划推理.png" alt="规划推理" width="440" />
+</p>
+<p align="center"><sub>规划模式 — 推理中间过程</sub></p>
+
+</td>
+</tr>
+<tr>
+<td width="50%">
+
+<p align="center">
+  <img src="images/Agent 对话请求提问.png" alt="发起 A2A" width="440" />
+</p>
+<p align="center"><sub>Nexus — 发起 Agent 对话邀请</sub></p>
+
+</td>
+<td width="50%">
+
+<p align="center">
+  <img src="images/Agent对话接收请求.png" alt="接收 A2A" width="440" />
+</p>
+<p align="center"><sub>Nexus — 接收方选择 Agent 响应</sub></p>
+
+</td>
+</tr>
+</table>
 
 ---
 
 ## 🏗️ 技术架构
 
 ```
-┌──────────────────────────────────────────────────────────┐
-│                      Electron 36                          │
-│   桌面容器 · 窗口管理 · safeStorage 密钥加密 · OTA 更新    │
-├───────────────────────────┬──────────────────────────────┤
-│      React 19 + Vite 8    │      Go 1.24 + Gin 1.10     │
-│   Tailwind CSS 3.4        │   SQLite（纯 Go WASM）       │
-│   Zustand 5 · Motion 12   │   WebSocket · mDNS · 信令    │
-│   6 主题 · 虚拟滚动        │   70+ API · 定时调度器       │
-│   prism 代码高亮           │   IM 连接器 · Bridge 路由    │
-│                            │   自我进化引擎 · 长期记忆     │
-└───────────────────────────┴──────────────────────────────┘
-              内嵌运行时（无需安装任何依赖）
-     Node.js · whisper.cpp · Claude CLI · LiteLLM Bridge
+┌──────────────────────────────────────────────────────────────┐
+│                      Electron 36 桌面壳                       │
+│  窗口管理 · Splash · safeStorage · 截屏 · Spotlight · 剪贴板   │
+├─────────────────────────────┬────────────────────────────────┤
+│   React 19 + Vite 8         │    Go 1.24 + Gin + SQLite       │
+│   Tailwind CSS · Zustand     │    WebSocket · mDNS · 信令中继   │
+│   Framer Motion · 6 主题     │    向量库 · 进化 · 群聊 · 调度器  │
+│   虚拟滚动 · React.lazy      │    行为引擎 · Screen Agent       │
+└─────────────────────────────┴────────────────────────────────┘
+         内嵌：Node.js · whisper.cpp · Claude CLI · Bridge
 ```
 
-| 层 | 技术 | 说明 |
-|----|------|------|
-| 🖥️ 桌面壳 | Electron 36 | 窗口管理 · safeStorage · 截屏 · 自动更新 |
-| 🎨 前端 | React 19 + Vite 8 + Tailwind 3.4 | 6 主题 · Zustand · Framer Motion |
-| ⚙️ 后端 | Go 1.24 + Gin + SQLite | 70+ API · WebSocket · mDNS · 调度器 · 进化引擎 |
-| 🔊 语音 | whisper.cpp (Metal) | 离线 ASR · ggml-base |
-| 🔄 路由 | LiteLLM / llm-bridge | Anthropic ↔ OpenAI 协议翻译 |
+| 层级 | 技术栈 |
+|------|--------|
+| **桌面壳** | Electron 36 · electron-builder · 自动更新 |
+| **前端** | React 19 · Vite 8 · Tailwind 3.4 · Zustand 5 · Framer Motion 12 · Recharts |
+| **后端** | Go 1.24 · Gin 1.10 · ncruces/go-sqlite3（纯 Go，无 CGO）· Gorilla WebSocket |
+| **AI 运行时** | Claude CLI · LiteLLM / llm-bridge 协议翻译 · whisper.cpp 离线 ASR |
+| **向量引擎** | 纯 Go cosine similarity · 768 维嵌入 · BM25 + RRF 混合检索 |
+| **网络层** | mDNS 局域网发现 · WebSocket 信令服务器 · HTTP/WAN Transport |
 
 ---
 
@@ -558,34 +687,68 @@ Claude CLI ──Anthropic──► Bridge (127.0.0.1) ──OpenAI──► Dee
 
 ### macOS（Apple Silicon）
 
-1. 从 [Releases](https://github.com/OdysseyFather/lingxi/releases) 下载 `.dmg`
-2. 双击安装，拖入应用程序
-3. 首次打开提示"无法验证"：`xattr -cr "/Applications/灵犀.app"`
-4. 设置 → 模型与接入点，配置至少一个 API Key
-5. 开始对话！
+1. 从 [Releases](https://github.com/OdysseyFather/lingxi/releases) 下载 `.dmg` 安装包
+2. 拖入「应用程序」文件夹
+3. 若 macOS 提示无法验证：`xattr -cr "/Applications/灵犀.app"`
+4. 启动灵犀 → **设置 → 模型与接入点** → 配置至少一个 API Key
+5. 创建或选择智能体，开始对话
+
+### Windows
+
+下载 `灵犀 Setup x.x.x.exe`（安装版）或 `灵犀 x.x.x.exe`（便携版），配置接入点后即可使用。
 
 ### 从源码构建
 
 ```bash
-# 前置：Node.js >= 20.19, Go >= 1.24
+# 前置：Node.js >= 20.19 · Go >= 1.24
 git clone https://github.com/OdysseyFather/lingxi.git
-cd lingxi && ./build-desktop.sh
+cd lingxi
+
+# 一键构建（macOS + Windows）
+./build-desktop.sh
+
+# 仅 macOS
+./build-desktop.sh mac
+
+# 仅 Windows（交叉编译）
+./build-desktop.sh win
+```
+
+构建产物在 `dist-electron/` 目录：
+
+```
+dist-electron/
+├── mac-arm64/灵犀.app          # 直接运行
+├── 灵犀-{version}-arm64.dmg    # macOS 安装包
+├── 灵犀 Setup {version}.exe    # Windows 安装包
+└── 灵犀 {version}.exe          # Windows 便携版
 ```
 
 <details>
-<summary><b>开发模式 →</b></summary>
-<br/>
+<summary><b>开发模式（三终端）</b></summary>
 
 ```bash
 # 终端 1：前端热更新
-cd frontend-desktop && npm install && npm run dev
+cd frontend-desktop && npm install && npm run dev   # :5173
 
 # 终端 2：Go 后端
-cd backend-desktop && go run .
+cd backend-desktop && go run .                      # :3001
 
-# 终端 3：Electron
+# 终端 3：Electron 桌面壳
 cd electron && npm install && npm start
 ```
+
+</details>
+
+<details>
+<summary><b>常见问题</b></summary>
+
+| 问题 | 解决方案 |
+|------|----------|
+| Vite 构建报 Node 版本错误 | Vite 8 需要 Node.js ≥ 20.19，请升级或下载 Node 22 |
+| npm EACCES 权限错误 | 使用临时缓存：`NPM_CONFIG_CACHE=/tmp/npm-cache npm install` |
+| macOS 提示应用无法验证 | `xattr -cr "/Applications/灵犀.app"` |
+| Go 编译失败 | 确保 Go ≥ 1.24，执行 `go mod tidy` 后重试 |
 
 </details>
 
@@ -593,30 +756,25 @@ cd electron && npm install && npm start
 
 ## 📜 许可协议
 
-本项目采用 **个人使用与学习许可协议**，仅允许个人学习、研究和非商业用途。**严禁任何形式的商业使用**（包括但不限于集成到商业产品、SaaS 服务、商业部署等）。违反协议将依法追究法律责任。
-
-详见 [LICENSE](LICENSE)。如需商业授权，请通过 GitHub 联系版权方。
+本项目采用 **个人使用与学习许可**，禁止商业用途。详见 [LICENSE](LICENSE)。
 
 ---
 
-## ☕ 打赏支持
+## ☕ 支持项目
 
-> 开源不易，如果灵犀对你有帮助，欢迎请作者喝杯咖啡。你的支持是项目持续迭代的最大动力。
+如果灵犀对你有帮助，欢迎 Star 和打赏支持持续开发。
 
 <p align="center">
-  <img src="images/打赏.png" alt="微信打赏" width="300" />
-  <br/><br/>
-  <sub>微信扫一扫，随意打赏 · 感谢每一份支持</sub>
+  <img src="images/打赏.png" alt="微信打赏" width="280" />
+  <br/><sub>扫码打赏 · 支持持续迭代</sub>
 </p>
 
 ---
 
 <p align="center">
-  <br/>
   <img src="logo.jpg" width="48" alt="灵犀" />
   <br/><br/>
-  <strong>灵犀</strong> —— 让 AI 成为你的工作伙伴，而不只是聊天对象。<br/>
-  <sub>Built with ❤️ by the Lingxi community</sub>
+  <strong>灵犀</strong> — 让 AI 成为你的工作伙伴，而不只是聊天对象。
   <br/><br/>
-  如果觉得有价值，欢迎 <a href="https://github.com/OdysseyFather/lingxi">Star</a> 支持！
+  <sub>如果对你有帮助，请 <a href="https://github.com/OdysseyFather/lingxi">Star ⭐</a></sub>
 </p>

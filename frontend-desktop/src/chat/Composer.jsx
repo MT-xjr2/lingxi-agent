@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, useCallback, useMemo } from 'react';
-import { Send, ImagePlus, BookOpen, Square, Cpu, Coins, Slash, Languages, FileText, Lightbulb, Code2, SearchCheck, RefreshCw, Wrench, Mail, Sparkles, GitCompare, Database, TestTube, Mic, MicOff, Loader2, Paperclip, X, Camera } from 'lucide-react';
+import { Send, ImagePlus, BookOpen, Square, Cpu, Coins, Slash, Languages, FileText, Lightbulb, Code2, SearchCheck, RefreshCw, Wrench, Mail, Sparkles, GitCompare, Database, TestTube, Mic, MicOff, Loader2, Paperclip, X, Camera, Monitor } from 'lucide-react';
 import { useStore } from '../state/useStore';
 import { Button, Tooltip } from '../ui/primitives';
 import { cn } from '../ui/cn';
@@ -41,6 +41,8 @@ export function Composer({ useKB: controlledUseKB, setUseKB: setControlledUseKB 
   const isStreaming = useStore((s) => s.isStreaming);
   const messages = useStore((s) => s.messages);
   const pushNotification = useStore((s) => s.pushNotification);
+  const screenAgentMode = useStore((s) => s.screenAgentMode);
+  const toggleScreenAgentMode = useStore((s) => s.toggleScreenAgentMode);
 
   const [text, setText] = useState('');
   const [localUseKB, setLocalUseKB] = useState(false);
@@ -487,6 +489,19 @@ export function Composer({ useKB: controlledUseKB, setUseKB: setControlledUseKB 
                   </button>
                 </Tooltip>
               )}
+              <Tooltip label={screenAgentMode ? '关闭 Screen Agent' : 'Screen Agent · 屏幕操控'}>
+                <button
+                  onClick={toggleScreenAgentMode}
+                  className={cn(
+                    'inline-flex items-center justify-center w-9 h-9 rounded-lg transition',
+                    screenAgentMode
+                      ? 'bg-blue-500/20 text-blue-500'
+                      : 'hover:bg-[color:var(--bg-soft)] text-[color:var(--text-soft)]'
+                  )}
+                >
+                  <Monitor size={18} />
+                </button>
+              </Tooltip>
               <Tooltip label={useKB ? '已启用知识库检索' : '启用知识库检索'}>
                 <button
                   onClick={() => setUseKB((v) => !v)}

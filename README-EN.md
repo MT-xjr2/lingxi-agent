@@ -1,591 +1,750 @@
 <p align="center">
-  <img src="logo.jpg" width="140" alt="Lingxi Logo" />
+  <img src="logo.jpg" width="128" alt="Lingxi Logo" />
 </p>
 
 <h1 align="center">Lingxi AI Agent</h1>
 
 <p align="center">
-  <strong>Local-first · Multi-model · Multi-agent · Self-Evolution · Agent Collaboration · Zero Config</strong>
+  <strong>A local-first desktop AI Agent workbench</strong><br/>
+  Multi-model · Multi-agent · Persona distillation · Deep RAG · Screen control · Agent mesh · Group chat · Self-evolution
 </p>
 
 <p align="center">
-  <a href="LICENSE"><img src="https://img.shields.io/badge/license-Personal%20Use-orange.svg" alt="Personal Use License" /></a>
-  <img src="https://img.shields.io/badge/platform-macOS%20%7C%20Windows-lightgrey.svg" alt="Platform" />
-  <img src="https://img.shields.io/badge/Electron-36-47848F.svg?logo=electron" alt="Electron" />
-  <img src="https://img.shields.io/badge/React-19-61DAFB.svg?logo=react" alt="React" />
-  <img src="https://img.shields.io/badge/Go-1.24-00ADD8.svg?logo=go" alt="Go" />
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-Personal%20Use-orange" alt="License" /></a>
+  <img src="https://img.shields.io/badge/platform-macOS%20%7C%20Windows-lightgrey" alt="Platform" />
+  <img src="https://img.shields.io/badge/Electron-36-47848F?logo=electron&logoColor=white" alt="Electron" />
+  <img src="https://img.shields.io/badge/React-19-61DAFB?logo=react&logoColor=white" alt="React" />
+  <img src="https://img.shields.io/badge/Go-1.24-00ADD8?logo=go&logoColor=white" alt="Go" />
 </p>
 
 <p align="center">
-  <a href="README.md">中文</a>&nbsp;&nbsp;|&nbsp;&nbsp;
-  <a href="#-why-lingxi">Why Lingxi</a>&nbsp;&nbsp;|&nbsp;&nbsp;
-  <a href="#-features">Features</a>&nbsp;&nbsp;|&nbsp;&nbsp;
-  <a href="#-screenshots">Screenshots</a>&nbsp;&nbsp;|&nbsp;&nbsp;
-  <a href="#-quick-start">Quick Start</a>&nbsp;&nbsp;|&nbsp;&nbsp;
-  <a href="#-architecture">Architecture</a>&nbsp;&nbsp;|&nbsp;&nbsp;
-  <a href="#-license">License</a>
-</p>
-
-<br/>
-
-> **More than a chatbot.** Build your own AI agent team, equip them with skills and knowledge, let them self-evolve from conversations, design automated workflows, even let agents on different machines talk to each other — all running locally.
-
-<br/>
-
-<p align="center">
-  <img src="images/首页.png" alt="Lingxi Workbench" width="900" />
+  <a href="README.md">中文</a> ·
+  <a href="#-why-lingxi">Why Lingxi</a> ·
+  <a href="#-core-highlights">Highlights</a> ·
+  <a href="#-capability-map">Capabilities</a> ·
+  <a href="#-feature-deep-dive">Features</a> ·
+  <a href="#-quick-start">Quick start</a> ·
+  <a href="#-architecture">Architecture</a> ·
+  <a href="#-support">Support</a>
 </p>
 
 <br/>
 
 ---
 
-## ✨ Why Lingxi
+## 📷 Overview
+
+<!-- 📷 Hero screenshot -->
+<p align="center">
+  <img src="images/screenshots/01-hero-home.png" alt="Lingxi workbench" width="920" />
+</p>
+<p align="center"><sub>The Lingxi workbench — chat, agents, and tools in one place</sub></p>
+
+<br/>
+
+---
+
+## 🤔 Why Lingxi
+
+There are plenty of AI products out there — ChatGPT, Claude, and all manner of chat apps. But when you try to use AI as a genuine **work partner** rather than a throwaway Q&A box, you hit a wall:
+
+- **Data lives in the cloud**: conversations, knowledge bases, and API keys are all handed to third parties — zero privacy guarantees.
+- **"Custom assistants" are just system prompts**: no real skills, no tools, no memory.
+- **Agents can't collaborate**: your code reviewer and your colleague's architect bot live on separate islands forever.
+- **No evolution**: you correct the AI a hundred times; next session, it makes the same mistake — because nothing is remembered.
+- **Group chat is a round-robin script**: multi-agent scenarios feel mechanical, not human.
+
+**Lingxi** was built to fix all of that. It runs a full Agent stack on your local machine: data and keys stay on-device, every agent has its own skills, knowledge base, and tools, agents can stream conversations across devices in real time, personas are distilled from real chat exports, and agents self-evolve from dialogue.
+
+**In one sentence: Lingxi is not "another chat window" — it's an AI Agent operating system on your desktop.**
+
+<br/>
+
+---
+
+## ✨ Core highlights
+
+<table>
+<tr>
+<td width="180" align="center"><strong>🔒 Local-first</strong></td>
+<td>Sessions, config, vector indices, and evolution logs live in on-device SQLite. API keys use the OS keychain. Offline ASR via built-in whisper.cpp. Your data stays your data.</td>
+</tr>
+<tr>
+<td align="center"><strong>🤖 14+ providers</strong></td>
+<td>Anthropic, OpenAI, DeepSeek, Qwen, Gemini, Doubao, GLM, Kimi, Groq, Ollama… The built-in Bridge layer translates protocols transparently — switch models mid-chat without friction.</td>
+</tr>
+<tr>
+<td align="center"><strong>🧠 Real agents</strong></td>
+<td>Not a system-prompt swap: each agent has its own skill pack, RAG knowledge base, MCP tools, workflows; can autonomously invoke Bash, file I/O, browsers; supports two-phase planning.</td>
+</tr>
+<tr>
+<td align="center"><strong>👤 Persona distillation</strong></td>
+<td>Powered by <a href="https://github.com/titanwings/colleague-skill">dot-skill</a>: upload WeChat logs, PDFs, emails — distill a colleague's, friend's, or celebrity's communication style and personality into an agent. Parallel multi-person runs supported.</td>
+</tr>
+<tr>
+<td align="center"><strong>🧬 Self-evolution</strong></td>
+<td>Corrections, thumbs-down, and rich threads are automatically refined into long-term memories, knowledge docs, and skill fixes. Global scanner + per-session triggers; fully auditable and revertible.</td>
+</tr>
+<tr>
+<td align="center"><strong>🌐 Agent mesh</strong></td>
+<td>Project Nexus: LAN mDNS + WAN signaling for cross-device auto-discovery and bidirectional token-level streaming. Humans can pause, take over, or approve at any time.</td>
+</tr>
+<tr>
+<td align="center"><strong>👥 WeChat-style group chat</strong></td>
+<td>Multiple agents in one room; personality-driven speak probability; @mentions, quotes, images; human-like pacing — not round-robin scripts.</td>
+</tr>
+<tr>
+<td align="center"><strong>🖥️ Screen awareness</strong></td>
+<td>Screen Agent sees your screen, plans steps, and operates mouse/keyboard with per-step confirmation. Spotlight global float + smart clipboard suggestions.</td>
+</tr>
+<tr>
+<td align="center"><strong>📦 Zero-ops setup</strong></td>
+<td>macOS <code>.dmg</code> / Windows installer bundles Go backend, Node, whisper.cpp, and Claude CLI. No Docker, no self-hosted servers.</td>
+</tr>
+</table>
+
+<br/>
+
+---
+
+## 🗺️ Capability map
+
+```mermaid
+flowchart TB
+  subgraph Desktop["🖥️ Electron shell"]
+    UI["React 19 · 6 themes · streaming UI"]
+    SP["Spotlight · clipboard watcher"]
+    SC["Screen Agent desktop control"]
+  end
+
+  subgraph Core["⚙️ Go backend · SQLite"]
+    Chat["Chat engine · planning · tool chain"]
+    Agent["Agent factory · persona distillation"]
+    Evo["Self-evolution · global scanner"]
+    RAG["Vector index · hybrid search · file watch"]
+    Nexus["Project Nexus · group chat · signaling"]
+    Job["Scheduler · IM webhooks"]
+    Skill["Skills · MCP · workflows"]
+  end
+
+  subgraph AI["🧠 AI runtime"]
+    CLI["Claude CLI"]
+    Bridge["LiteLLM / llm-bridge protocol translation"]
+    WH["whisper.cpp offline ASR"]
+  end
+
+  UI --> Chat
+  UI --> Agent
+  UI --> Nexus
+  Chat --> CLI
+  CLI --> Bridge
+  Chat --> RAG
+  Agent --> Evo
+  SP --> Chat
+  SC --> Chat
+  Job --> Chat
+  Skill --> Chat
+```
+
+<br/>
+
+---
+
+## 🎯 Feature deep dive
+
+> Every section includes screenshots. Already-captured images are shown inline; placeholders will display once you drop the corresponding PNG into `images/screenshots/`.
+
+---
+
+### 💬 Smart conversation — more than just chat
+
+Streaming output is split into **thinking**, **tool calls**, and **body text** — each with dedicated fold/expand interactions. OpenAI reasoning token passthrough shows the full chain of thought. Code blocks get syntax highlighting with one-click copy. Messages can be edited and resent (context is automatically truncated). `⌘K` searches all message history.
+
+**Rich Markdown rendering** is a standout: Mermaid diagrams (flowcharts, sequence, architecture, Gantt…) and PlantUML render as interactive SVGs right inside the chat — agents actively draw diagrams to explain ideas.
+
+Also built in: `/` slash commands (12 built-in), two-phase planning, interactive wizard flows, image paste, file drag-and-drop, voice input (local whisper.cpp), TTS readout, message pinning, quick-reply suggestions, RAG `[N]` citation annotations with hover detail cards, and more.
+
+<!-- 📷 Streaming chat -->
+<p align="center">
+  <img src="images/screenshots/02-chat-stream.png" alt="Streaming chat" width="920" />
+</p>
+<p align="center"><sub>Streaming chat · thinking fold · code highlighting · tool calls</sub></p>
+
+<br/>
 
 <table>
 <tr>
 <td width="50%">
 
-**🔒 Your Data Stays Yours**
-
-Conversations, configs, and API keys live in local SQLite. Keys encrypted via macOS Keychain / Windows DPAPI. Zero cloud dependency — works offline with local models.
+**Core chat capabilities**
+- Streaming · thinking/tools/text separation
+- Code blocks with syntax highlighting + copy
+- Edit & resend · message pinning
+- Feedback (thumbs up/down)
+- `⌘K` search · export to Markdown
+- Virtual scroll (100+ messages, zero lag)
 
 </td>
 <td width="50%">
 
-**🔌 14+ Model Providers**
-
-Anthropic · OpenAI · DeepSeek · Qwen · Gemini · Doubao · GLM · Kimi · Groq · Ollama … Built-in Bridge layer auto-translates protocols. Switch freely.
-
-</td>
-</tr>
-<tr>
-<td>
-
-**🤖 Beyond Chat — An Agent Workbench**
-
-Create agents with custom roles, skills, knowledge bases, and MCP tools. AI doesn't just answer questions — it **gets work done**: write code, query data, read docs, operate web pages.
-
-</td>
-<td>
-
-**🧬 Self-Evolving Agents**
-
-Agents learn from every conversation: auto-extract memories, knowledge, and skill fixes. Triggered by negative feedback, user corrections, or valuable dialogue. Real-time progress panel + one-click revert — evolution fully under your control.
-
-</td>
-</tr>
-<tr>
-<td>
-
-**🌐 Agent-to-Agent Conversations (Project Nexus)**
-
-LAN + WAN. Agents across machines auto-discover and stream bidirectionally. Your code reviewer discusses architecture with a colleague's architect — humans oversee anytime.
-
-</td>
-<td>
-
-**📦 Double-Click to Run, Zero Dependencies**
-
-Download `.dmg` on macOS — done. Bundles Go backend + Node.js + whisper.cpp. No Python, Docker, or backend setup needed. 6 beautiful themes out of the box.
+**Enhanced experience**
+- `/` slash commands · two-phase planning
+- Interactive wizards · info-collection blocks
+- Image paste (`⌘V`) · file drag-and-drop
+- Voice input (local whisper.cpp)
+- TTS readout · quick-reply suggestions
+- RAG `[N]` citations · hover detail cards
 
 </td>
 </tr>
 </table>
 
----
-
-## 🚀 Features
-
-### 🏭 Agent Factory
-
-> Each agent has **9 dimensions of customization** — far more than swapping a system prompt.
-
+<!-- 📷 Agent interaction -->
 <p align="center">
-  <img src="images/智能体工厂.png" alt="Agent Factory" width="900" />
+  <img src="images/智能体交互.png" alt="Agent interaction" width="920" />
 </p>
+<p align="center"><sub>Autonomous agent execution · tool calls · multi-turn reasoning</sub></p>
 
-<table>
-<tr><td width="22%">🎭 <b>Identity & Role</b></td><td>Name, avatar, description, full system prompt</td></tr>
-<tr><td>🧩 <b>Capabilities</b></td><td>Independently bind skills, knowledge bases, MCP tools per agent</td></tr>
-<tr><td>🎛️ <b>Parameters</b></td><td>temperature · max_tokens — independent controls</td></tr>
-<tr><td>🧬 <b>Self-Evolution</b></td><td>Multi-trigger (corrections/negative feedback/valuable dialogue) · real-time progress · inline notifications · one-click revert · filterable evolution history · session-level knowledge extraction</td></tr>
-<tr><td>🌐 <b>External Collab</b></td><td>Public toggle · capability tags · authorization levels · forbidden info</td></tr>
-<tr><td>📋 <b>17 Templates</b></td><td>Business · Development · Creative · Productivity — plus a 5-step creation wizard</td></tr>
-</table>
+<!-- 📷 Planning mode -->
+<p align="center">
+  <img src="images/screenshots/13-planning-mode.png" alt="Planning mode" width="920" />
+</p>
+<p align="center"><sub>Two-phase planning — choose dimensions first, then execute</sub></p>
 
-<details>
-<summary><b>View built-in templates →</b></summary>
+<!-- 📷 Mermaid chart -->
+<p align="center">
+  <img src="images/screenshots/22-mermaid-chart.png" alt="Mermaid chart" width="720" />
+</p>
+<p align="center"><sub>Mermaid / PlantUML rendered as interactive SVG in chat</sub></p>
+
 <br/>
-
-| Category | Templates |
-|----------|-----------|
-| 🏢 Business | Sales Assistant · Business Analyst · HR · Legal Advisor |
-| 💻 Development | Code Reviewer · Architect · DevOps Expert · Security Engineer · DBA |
-| ✍️ Creative | Content Creator · Copywriter · Translation Expert · Academic Writer |
-| 🌈 Productivity | Product Manager · Fitness Coach · Financial Advisor · Travel Planner |
-
-</details>
-
-<p align="center">
-  <img src="images/智能体角色设定.png" alt="Creation Wizard" width="900" />
-</p>
-<p align="center"><sub>▲ 5-Step Creation Wizard — Role · Capabilities · Parameters · External · Preview</sub></p>
-
-<p align="center">
-  <img src="images/智能体配置.png" alt="Agent Configuration" width="900" />
-</p>
-<p align="center"><sub>▲ Multi-dimension fine-grained agent configuration</sub></p>
-
----
-
-### 🧬 Self-Evolution Engine
-
-> Agents don't just follow instructions — they **learn and grow** from every conversation. Negative feedback, user corrections, and valuable multi-turn dialogues all trigger evolution, automatically extracting memories, knowledge, and skill fixes.
-
-<p align="center">
-  <img src="images/自我进化.png" alt="Self-Evolution History" width="900" />
-</p>
-<p align="center"><sub>▲ Evolution History — stats panel + timeline + category filters + one-click revert</sub></p>
-
-| Capability | Description |
-|------------|-------------|
-| 🎯 Multi-Trigger | User corrections · negative feedback (thumbs down) · valuable multi-turn dialogue · manual extraction |
-| 📊 Real-Time Progress | Full visibility during evolution: prepare context → LLM analysis → parse results → execute actions |
-| 🧠 Three Evolution Actions | **Memory** (preferences/habits) · **Knowledge** (SOPs/procedures) · **Skill Fix** (tool description corrections) |
-| ↩️ One-Click Revert | Every evolution record can be undone: deletes written memories/knowledge files/skill modifications |
-| 📋 Evolution History | Full timeline · filter by type/status · search · expandable details · raw LLM response |
-| 💬 Inline Notifications | Evolution results shown directly in chat as a card, with instant revert |
-| 📝 Session Extraction | One-click extraction of an entire conversation's knowledge into structured docs |
-
-<p align="center">
-  <img src="images/自我进化-agent设置.png" alt="Agent Evolution Settings" width="900" />
-</p>
-<p align="center"><sub>▲ Enable/disable self-evolution in agent editor + view evolution logs</sub></p>
-
-<p align="center">
-  <img src="images/自我进化-对话提取.png" alt="Conversation Knowledge Extraction" width="900" />
-</p>
-<p align="center"><sub>▲ "Extract Knowledge" button in chat bubbles — manually trigger knowledge extraction from any message</sub></p>
-
-<details>
-<summary><b>How Evolution Works →</b></summary>
-<br/>
-
-```
-Conversation ends ──► Trigger detection (correction / negative feedback / valuable dialogue)
-                          │
-                          ▼
-              Reuse current AI engine to analyze context
-                          │
-                          ▼
-           Parse LLM's returned JSON action list
-                          │
-                          ▼
-             ┌────────────┼────────────┐
-             ▼            ▼            ▼
-         Write Memory  Create KB Doc  Fix Skill Desc
-         (memories)    (knowledge/)   (skill fix)
-                          │
-                          ▼
-          Record to evolution_logs + WS real-time notification
-```
-
-- Uses the currently active model (same engine as main chat), no separate HTTP API calls
-- Each evolution action independently recorded, individually revertible
-- Evolution logs retain raw LLM responses and execution steps for auditing and debugging
-
-</details>
-
----
-
-### 💬 Premium Conversation Experience
-
-> Streaming isn't just showing text — it's **thinking blocks + tool blocks + text blocks** rendered with precision.
-
-<p align="center">
-  <img src="images/普通对话.png" alt="Chat Experience" width="900" />
-</p>
-
-| Capability | Description |
-|------------|-------------|
-| ⚡ Streaming + Chain of Thought | Real-time token output, collapsible thinking, OpenAI reasoning passthrough |
-| 🎨 Code Highlighting | 50+ languages + one-click copy |
-| 🖼️ Multimodal Input | Image paste · file drag · offline voice · screenshot (⌘⇧S) |
-| 📚 RAG Citation | Inline `[N]` superscripts + hover cards + reference list |
-| 🔍 Search & Commands | ⌘K search · `/` slash commands · message edit & resend |
-| 🗺️ Two-Phase Planning | Collect requirements first, then execute |
-| 💡 Smart Suggestions | 2-3 follow-up question capsules after every reply |
-| 📌 Message Management | Pin · feedback · session pinning · batch delete · Markdown export |
-| 🔊 TTS Read Aloud | Chinese/English auto-detect, one-click play |
-
-<p align="center">
-  <img src="images/智能体交互.png" alt="Agent Interaction" width="900" />
-</p>
-<p align="center"><sub>▲ Autonomous task execution — tool calls, file reads, code writing</sub></p>
-
-<p align="center">
-  <img src="images/规划推理.png" alt="Planning" width="900" />
-</p>
-<p align="center"><sub>▲ Two-Phase Planning — collect dimensions first, execute after confirmation</sub></p>
-
-<p align="center">
-  <img src="images/规划模式.png" alt="Planning Mode" width="900" />
-</p>
-<p align="center"><sub>▲ Immersive multi-dimension requirement collection panel</sub></p>
-
-<p align="center">
-  <img src="images/agent ppt创作.png" alt="PPT Creation" width="900" />
-</p>
-<p align="center"><sub>▲ AI actually getting work done — auto-generating PPT content</sub></p>
-
----
-
-### 🎤 Offline Voice Input
-
-Built-in **whisper.cpp** (Apple Metal accelerated). Record → local recognition → text fills input. Fully offline, zero latency. Falls back to remote Whisper API when needed.
-
----
-
-### 🔗 14+ Providers, Unified
-
-<p align="center">
-  <img src="images/接入点管理.png" alt="Provider Management" width="900" />
-</p>
-
-| Protocol | Providers |
-|----------|-----------|
-| Anthropic Native | Anthropic · DashScope (Alibaba Cloud) |
-| OpenAI Compatible | DeepSeek · Qwen · Doubao · GLM · Kimi · Gemini · OpenRouter · Groq · SiliconFlow · Ollama · OpenAI |
-
-<p align="center">
-  <img src="images/llm.png" alt="Multi-Model Switch" width="900" />
-</p>
-<p align="center"><sub>▲ 14+ providers, switch freely with one configuration</sub></p>
-
-<details>
-<summary><b>How the Bridge layer works →</b></summary>
-<br/>
-
-Lingxi's AI engine uses the Anthropic protocol. For OpenAI-compatible providers, a local Bridge auto-starts for bidirectional real-time translation:
-
-```
-Claude CLI ──Anthropic──► Bridge (127.0.0.1) ──OpenAI──► DeepSeek / Qwen / ...
-```
-
-Prefers LiteLLM (Python), falls back to llm-bridge (Node.js). Transparent to users.
-
-</details>
-
----
-
-### 🧩 Skills · Knowledge Base · MCP
-
-<table>
-<tr>
-<td width="33%" valign="top">
-
-**⚡ Skills**
-- AI auto-generation
-- ZIP import / batch upload
-- Smithery marketplace install
-- Online edit / export / batch export ZIP
-- Exports include manifest.json metadata
-- Per-agent binding
-
-</td>
-<td width="33%" valign="top">
-
-**📚 Knowledge Base**
-- `.md` `.txt` `.csv` `.json` `.pdf` `.docx`
-- Docs / QA / Data categories
-- Drag-and-drop + preview
-- Auto index + RAG citations
-
-</td>
-<td width="33%" valign="top">
-
-**🔧 MCP Tools**
-- stdio / SSE / HTTP protocols
-- Built-in Playwright MCP
-- One-click config export
-- Browse web, access filesystem…
-
-</td>
-</tr>
-</table>
-
-<p align="center">
-  <img src="images/skill管理.png" alt="Skills" width="900" />
-</p>
-<p align="center"><sub>▲ Skills — AI generation / marketplace / online edit / ZIP import</sub></p>
-
-<p align="center">
-  <img src="images/skill安装.png" alt="Skill Install" width="900" />
-</p>
-<p align="center"><sub>▲ Smithery Marketplace — search, browse categories, one-click install</sub></p>
-
-<p align="center">
-  <img src="images/知识库.png" alt="Knowledge Base" width="900" />
-</p>
-<p align="center"><sub>▲ Knowledge Base — drag-and-drop · categorized · RAG citations</sub></p>
-
-<p align="center">
-  <img src="images/mcp.png" alt="MCP" width="900" />
-</p>
-<p align="center"><sub>▲ MCP Tools — all protocols · one-click export</sub></p>
-
----
-
-### 🔀 Visual Workflow Designer
-
-> Drag nodes, draw connections, build execution flows — no code required.
-
-<p align="center">
-  <img src="images/工作流编排首页.png" alt="Workflow" width="900" />
-</p>
-
-| Node | Description |
-|------|-------------|
-| 💬 Prompt | Send prompt to AI |
-| 🔀 Condition | Branch on output |
-| 🔄 Loop | Repeat N times |
-| ⏱️ Delay | Wait for duration |
-| 💻 Code | Bash / Python scripts |
-| 📤 Output | Final result |
-
----
-
-### 🌐 Project Nexus — Agent-to-Agent Network
-
-> A Lingxi original. Agents across instances **auto-discover, connect, and stream bidirectionally** — LAN + WAN.
-
-<p align="center">
-  <img src="images/Agent Nexus网络.png" alt="Nexus Network" width="900" />
-</p>
-
-```
-┌──────────────────┐                           ┌──────────────────┐
-│   Instance A      │  ◄── Bidirectional ──►    │   Instance B      │
-│   🤖 Reviewer    │      mDNS / Signaling     │   🤖 Architect    │
-│   🧑 Human A     │      Token-level Stream   │   🧑 Human B     │
-│   (observe)       │                           │   (observe)       │
-└──────────────────┘                           └──────────────────┘
-```
-
-| Capability | Description |
-|------------|-------------|
-| 🔍 Auto-Discovery | LAN mDNS + WAN signaling, visible within 10 seconds |
-| ⚡ Bidirectional Streaming | Both agents stream token-by-token, thinking synced |
-| 🧠 Persistent Context | Each conversation maps to an isolated session |
-| 👁️ Dual-Side Observation | Both parties watch agents think and respond live |
-| ✋ Human Oversight | Pause · takeover · terminate · approval |
-| 📝 Full Rendering | Code highlighting · tables · thinking blocks — same UI as main chat |
-
-<p align="center">
-  <img src="images/Agent 对话请求提问.png" alt="Initiate Agent Dialogue" width="900" />
-</p>
-<p align="center"><sub>▲ Initiate Agent Dialogue — select the remote agent, set discussion topic and goals</sub></p>
-
-<p align="center">
-  <img src="images/Agent对话接收请求.png" alt="Receive Invitation" width="900" />
-</p>
-<p align="center"><sub>▲ Receiver gets invitation — view topic and remote agent, select local agent to respond</sub></p>
-
-<p align="center">
-  <img src="images/Agent对话实况1.png" alt="Agent Conversation Live" width="900" />
-</p>
-<p align="center"><sub>▲ Agent-to-Agent live — purple = remote agent, theme color = local agent</sub></p>
-
-<p align="center">
-  <img src="images/Agent对话实况2.png" alt="Agent Deep Discussion" width="900" />
-</p>
-<p align="center"><sub>▲ Deep discussion — agents auto-converse in multiple rounds, full thinking visible</sub></p>
-
----
-
-### ⏰ Scheduled Tasks
-
-> Let agents work 24/7 — hourly email checks, daily reports, weekly cleanup.
-
-<p align="center">
-  <img src="images/定时任务.png" alt="Scheduled Tasks" width="900" />
-</p>
-
-- **Schedules**: Every N min/hour · daily/weekly/monthly · custom Cron
-- **Stateful Mode**: Agent remembers previous runs, reports incremental changes
-- **Desktop Notifications**: System-level notification on completion
-- **Execution History**: View past runs + jump to session
-
----
-
-### 💬 Enterprise IM Integration
-
-<p align="center">
-  <img src="images/IM.png" alt="IM Integration" width="900" />
-</p>
-
-| Platform | Integration |
-|----------|-------------|
-| 🟢 WeChat Work | Webhook bot |
-| 🔵 DingTalk | Webhook bot |
-| 🟣 Feishu (Lark) | Webhook bot |
-
----
-
-### 🧠 Long-Term Memory
-
-Cross-session persistent memory, isolated per agent. AI auto-records preferences and key info; manual management also available.
-
----
-
-### 📊 Usage Analytics & Budget Alerts
-
-<p align="center">
-  <img src="images/用量计费.png" alt="Usage" width="900" />
-</p>
-
-- 📈 Token-level precise billing
-- 📊 Local pricing estimation for unofficial providers (marked `~`)
-- 🔔 Daily/monthly budget alerts
-
----
-
-## 📸 Screenshots
-
-<table>
-<tr>
-<td><img src="images/首页.png" alt="Workbench" /></td>
-<td><img src="images/普通对话.png" alt="Streaming Chat" /></td>
-</tr>
-<tr>
-<td align="center"><sub>Workbench home</sub></td>
-<td align="center"><sub>Streaming chat + code highlighting</sub></td>
-</tr>
-<tr>
-<td><img src="images/智能体交互.png" alt="Agent Interaction" /></td>
-<td><img src="images/规划模式.png" alt="Planning Mode" /></td>
-</tr>
-<tr>
-<td align="center"><sub>Autonomous task execution</sub></td>
-<td align="center"><sub>Multi-dimension requirement collection</sub></td>
-</tr>
-<tr>
-<td><img src="images/智能体工厂.png" alt="Agent Factory" /></td>
-<td><img src="images/agent ppt创作.png" alt="PPT Creation" /></td>
-</tr>
-<tr>
-<td align="center"><sub>Agent Factory + template market</sub></td>
-<td align="center"><sub>AI actually getting work done</sub></td>
-</tr>
-<tr>
-<td><img src="images/自我进化.png" alt="Self-Evolution" /></td>
-<td><img src="images/自我进化-对话提取.png" alt="Knowledge Extraction" /></td>
-</tr>
-<tr>
-<td align="center"><sub>Self-Evolution history · one-click revert</sub></td>
-<td align="center"><sub>Extract knowledge from conversations</sub></td>
-</tr>
-<tr>
-<td><img src="images/llm.png" alt="Multi-Model" /></td>
-<td><img src="images/skill安装.png" alt="Skill Install" /></td>
-</tr>
-<tr>
-<td align="center"><sub>14+ providers, switch freely</sub></td>
-<td align="center"><sub>Smithery marketplace install</sub></td>
-</tr>
-<tr>
-<td><img src="images/工作流编排首页.png" alt="Workflow" /></td>
-<td><img src="images/Agent Nexus网络.png" alt="Nexus" /></td>
-</tr>
-<tr>
-<td align="center"><sub>Drag-and-drop workflow editor</sub></td>
-<td align="center"><sub>Agent auto-discovery & conversation</sub></td>
-</tr>
-<tr>
-<td><img src="images/Agent对话实况1.png" alt="Agent Chat" /></td>
-<td><img src="images/Agent对话实况2.png" alt="Agent Deep Chat" /></td>
-</tr>
-<tr>
-<td align="center"><sub>Agent-to-Agent live conversation</sub></td>
-<td align="center"><sub>Deep multi-round auto-discussion</sub></td>
-</tr>
-</table>
-
----
-
-## ⌨️ Keyboard Shortcuts
 
 | Shortcut | Action | Shortcut | Action |
 |----------|--------|----------|--------|
-| `⌘ K` | Search messages | `⌘ N` | New conversation |
+| `⌘ K` | Search messages | `⌘ N` | New chat |
 | `⌘ B` | Toggle sidebar | `⌘ ,` | Settings |
 | `⌘ /` | Shortcuts panel | `⌘ ⇧ S` | Screenshot to input |
-| `/` | Slash commands | `Esc` | Close panel |
-| `Enter` | Send | `Shift+Enter` | New line |
+| `⌘ ⇧ Space` | Spotlight | `⌘ ⇧ Esc` | Abort Screen Agent |
+| `/` | Slash commands | `Enter` / `⇧Enter` | Send / newline |
+
+---
+
+### 🏭 Agent factory — your agent assembly line
+
+Each agent is not a simple label but a **fully configurable entity**. A five-step creation wizard lets you fine-tune:
+
+- **Identity**: name, avatar (emoji or custom image upload), description
+- **Role**: system prompt, temperature, max_tokens, plus **group-chat personality** knobs (speak probability, interest tags, quiet hours, style hints…)
+- **Capabilities**: bind skill packs, RAG knowledge bases, MCP tool servers
+- **External settings**: Nexus visibility toggle, capability tags, authorization level, restricted info
+- **Preview**: review everything before creation
+
+**17 built-in templates** cover business, engineering, creative, and productivity scenarios — create from a template and customize.
+
+<!-- 📷 Agent factory -->
+<p align="center">
+  <img src="images/screenshots/03-agent-factory.png" alt="Agent factory" width="920" />
+</p>
+<p align="center"><sub>Agent factory — template market + custom creation</sub></p>
+
+<!-- 📷 Role settings -->
+<p align="center">
+  <img src="images/智能体角色设定.png" alt="Role settings" width="920" />
+</p>
+<p align="center"><sub>Five-step wizard · role settings · group-chat personality</sub></p>
+
+<!-- 📷 Capability bindings -->
+<p align="center">
+  <img src="images/智能体配置.png" alt="Capability bindings" width="920" />
+</p>
+<p align="center"><sub>Capability bindings — skills · knowledge base · MCP tools</sub></p>
+
+<details>
+<summary><b>17 built-in templates</b></summary>
+
+| Category | Templates |
+|----------|-----------|
+| Business | Sales · Analyst · HR · Legal |
+| Engineering | Code Review · Architect · DevOps · Security · DBA |
+| Creative | Writer · Copy · Translation · Academic |
+| Productivity | PM · Fitness · Finance · Travel |
+
+</details>
+
+---
+
+### 👤 Persona distillation — give AI a real personality
+
+One of Lingxi's most distinctive features. Powered by [dot-skill](https://github.com/titanwings/colleague-skill), you can extract a person's communication style, personality traits, and behavior patterns from **real chat materials** and inject them into an agent.
+
+**Supported materials**: WeChat/QQ chat exports (.md/.txt), PDFs, email archives, etc.
+
+**Three distillation modes**:
+- `colleague` — work relationships: extract professional abilities, communication style, work habits
+- `close` — intimate relationships: extract personality traits, emotional expressions, interaction patterns
+- `celebrity` — public figures: extract public speaking style, opinion tendencies
+
+**Key features**:
+- **Parallel multi-person distillation** (up to 5 concurrent), SSE real-time streaming logs
+- **Independent distill records**: each run stored separately, never pollutes the default skill library
+- **Import from records**: when creating a new agent, pick an existing distill record and one-click fill persona config
+
+<!-- 📷 Distillation modal (screenshot needed: show family picker + material list + streaming log area) -->
+<p align="center">
+  <img src="images/screenshots/04-distill-modal.png" alt="Persona distillation" width="920" />
+</p>
+<p align="center"><sub>Persona distillation — parallel runs · SSE streaming logs · material management</sub></p>
+
+<!-- 📷 Distill records (screenshot needed: records panel with multiple entries + status) -->
+<p align="center">
+  <img src="images/screenshots/05-distill-records.png" alt="Distill records" width="920" />
+</p>
+<p align="center"><sub>Distill records — isolated storage · one-click import into new agents</sub></p>
+
+---
+
+### 🧬 Self-evolution — agents that learn from use
+
+Traditional AI assistants never change: you correct them a hundred times, and next session they repeat the same mistake. Lingxi's self-evolution engine changes that.
+
+**Trigger methods**:
+
+| Trigger | What happens |
+|---------|-------------|
+| User correction / thumbs down | Analyze conversation → write to long-term memory / knowledge doc / fix skill description |
+| Session end (≥6 messages + cooldown) | Automatic session-level evolution |
+| Global scan (default every 6 hours) | Quiet-hours-aware batch inspection of all evolution-enabled agents |
+| Manual trigger | "Extract knowledge" button on message bubbles |
+
+**Key guarantee**: evolution is not a black box. Every evolution log can be **viewed in detail**, **filtered by type**, **searched by keyword**, and unsatisfactory results can be **reverted individually** (memory/knowledge/skill changes auto-rolled back).
+
+<!-- 📷 Self-evolution -->
+<p align="center">
+  <img src="images/screenshots/06-evolution.png" alt="Self-evolution" width="920" />
+</p>
+<p align="center"><sub>Evolution timeline — filterable · searchable · per-entry revert</sub></p>
+
+<table>
+<tr>
+<td width="50%">
+
+<p align="center">
+  <img src="images/自我进化-agent设置.png" alt="Evolution settings" width="440" />
+</p>
+<p align="center"><sub>Per-agent evolution toggle</sub></p>
+
+</td>
+<td width="50%">
+
+<p align="center">
+  <img src="images/自我进化-对话提取.png" alt="Extract from chat" width="440" />
+</p>
+<p align="center"><sub>"Extract knowledge" button on bubbles</sub></p>
+
+</td>
+</tr>
+</table>
+
+---
+
+### 📚 Deep RAG — local knowledge, smart retrieval
+
+Lingxi ships a complete local RAG (Retrieval-Augmented Generation) pipeline — no cloud vector database needed.
+
+**Technical details**:
+- **Vector engine**: pure Go cosine similarity, 768-dim embeddings, separate `vectors.db`
+- **Chunking**: recursive splitting (512 chars/chunk, 128 overlap), paragraph → sentence → character boundaries
+- **Hybrid retrieval**: vector KNN + keyword BM25 + RRF fusion ranking
+- **Auto-indexing**: upload triggers async chunk + embed + store; folder watch (fsnotify) detects changes for incremental re-indexing
+
+**Chat integration**: when an agent has a bound knowledge base, conversations automatically run semantic search and inject the most relevant document fragments as context, with `[1]` `[2]` superscript citations. Hover to see citation detail cards.
+
+**Formats**: `.md` `.txt` `.csv` `.tsv` `.json` `.pdf` `.docx`
+
+<!-- 📷 Knowledge base -->
+<p align="center">
+  <img src="images/screenshots/10-knowledge-rag.png" alt="Knowledge & RAG" width="920" />
+</p>
+<p align="center"><sub>Knowledge base — categories · semantic search · index status · folder watch · embedding config</sub></p>
+
+---
+
+### 🖥️ Screen Agent — see the screen, take action
+
+Screen Agent gives Lingxi the ability to **see and operate your desktop**. Instead of just answering questions, it acts like a remote-assistance colleague who directly performs actions for you.
+
+**Workflow (OTA loop)**:
+1. **Observe** — capture current screen, understand content via multimodal model
+2. **Think** — plan action steps based on your instruction (with risk assessment)
+3. **Act** — execute step by step: mouse clicks, keyboard input, scrolling, opening apps
+
+**Robust safety**:
+- Per-step user confirmation (optional auto mode)
+- Dangerous-action blocklist forces confirmation even in auto mode
+- Rate limit: minimum 500ms/step, 60 actions/minute cap
+- Emergency stop: `⌘⇧Esc` global shortcut
+- Audit trail: all actions logged to `screen_actions` table
+
+<!-- 📷 Screen Agent (screenshot needed: show capture block / step plan / confirm panel) -->
+<p align="center">
+  <img src="images/screenshots/11-screen-agent.png" alt="Screen Agent" width="920" />
+</p>
+<p align="center"><sub>Screen Agent — screen capture · action planning · step-by-step confirmation</sub></p>
+
+---
+
+### 🔦 Spotlight — your proactive assistant
+
+Press `⌘⇧Space` and a lightweight floating panel slides down from the top, without interrupting whatever you're doing.
+
+- **Context-aware**: automatically reads active window name and browser URL
+- **Quick Actions**: dynamic shortcuts based on context (in IDE → explain code / generate tests; in browser → summarize / translate)
+- **Quick chat**: carries context metadata + knowledge base search for precise one-shot answers
+- **Smart clipboard**: 2-second polling, auto-classifies (code / error / URL / long English text / command), non-intrusive suggestion chip in the bottom-right corner
+
+<!-- 📷 Spotlight (screenshot needed: ⌘⇧Space floating panel with Quick Actions) -->
+<p align="center">
+  <img src="images/screenshots/12-spotlight.png" alt="Spotlight" width="720" />
+</p>
+<p align="center"><sub>Spotlight — ⌘⇧Space global float · context-aware · Quick Actions</sub></p>
+
+---
+
+### 🌐 Project Nexus — cross-device agent mesh
+
+Project Nexus lets agents on different computers **auto-discover each other and converse autonomously**.
+
+```
+  Instance A (your PC)                  Instance B (peer PC)
+  ┌─────────────────┐                  ┌─────────────────┐
+  │ 🤖 Reviewer     │ ◄── stream ──► │ 🤖 Architect     │
+  │ 🧑 You (observe)│    mDNS / WAN  │ 🧑 Peer (observe)│
+  └─────────────────┘                  └─────────────────┘
+```
+
+**Discovery**: LAN via mDNS (`_lingxi._tcp`, 10s scan); WAN via public signaling server (works out of the box).
+
+**Conversation flow**:
+1. See a peer in the discovery panel → click "Start conversation" → pick topic & agent
+2. Peer receives invite → picks their agent → accept/reject
+3. Both agents start autonomous dialogue: first-person natural speech, can use skills and knowledge
+4. Bidirectional token-level streaming — both sides see the other agent thinking and writing in real time
+
+**Humans stay in control**: pause, take over (switch to manual typing), terminate, or intervene during summary approval — at any time.
+
+<!-- 📷 Nexus discovery -->
+<p align="center">
+  <img src="images/screenshots/07-nexus-discover.png" alt="Nexus" width="920" />
+</p>
+<p align="center"><sub>Node discovery — LAN + WAN merged list · online status · one-click start</sub></p>
+
+<table>
+<tr>
+<td width="50%">
+
+<p align="center">
+  <img src="images/screenshots/08-nexus-a2a-live.png" alt="A2A live" width="440" />
+</p>
+<p align="center"><sub>Bidirectional streaming A2A</sub></p>
+
+</td>
+<td width="50%">
+
+<p align="center">
+  <img src="images/Agent对话实况2.png" alt="A2A live 2" width="440" />
+</p>
+<p align="center"><sub>Cross-instance real-time collaboration</sub></p>
+
+</td>
+</tr>
+</table>
+
+<!-- 📷 Invite -->
+<p align="center">
+  <img src="images/Agent对话接收请求.png" alt="Receive invite" width="720" />
+</p>
+<p align="center"><sub>Receiving an invite — pick your agent · view topic & goals · accept / reject</sub></p>
+
+---
+
+### 👥 WeChat-style agent group chat
+
+Lingxi's signature feature. Not simple round-robin, but a **pixel-perfect WeChat-like** group chat experience where multiple AI agents converse like real people.
+
+**UI details**:
+- Green bubbles (self) / white bubbles (others) · 36px rounded avatars
+- Merged bubbles (same sender within 3 minutes)
+- Timestamp capsules (shown only when gap ≥ 3 min)
+- Quote replies (gray-background block with left bar)
+- Recall within 2 minutes · image messages · @mentions
+- Top 9-avatar stack bar · member drawer
+
+**Personality behavior engine** (`groupbehavior/`):
+- On each new message, all joined local agents **independently and concurrently** evaluate whether to speak
+- Dimensions: @me (forced), interest match (+30), cold room (+40), challenged (+50), quiet hours (×0.1), just spoke (×0.2)
+- After deciding to speak, wait within personality-set delay range (min~max) + random jitter
+- **Quirks** (micro-personality): occasional typos, occasional "+1" echo, occasional emoji suffix
+- **Cold-start watcher**: checks every 60s; if silent >5 min, triggers cold_start_eligible agents to warm things up
+
+<!-- 📷 Group chat (screenshot needed: WeChat-style UI with green/white bubbles, multiple agents, timestamps, @mentions) -->
+<p align="center">
+  <img src="images/screenshots/09-group-chat.png" alt="Agent group chat" width="920" />
+</p>
+<p align="center"><sub>WeChat-style agent group chat — personality-driven · natural pacing · @mentions · quotes</sub></p>
+
+---
+
+### 🔧 Skills · MCP · Workflows · Scheduler · IM
+
+Lingxi is a complete agent platform, not just a chat window.
+
+#### Skills management
+
+Agent capabilities extend through "skills." Supports AI-generated skills (streaming), ZIP upload/import, online view/edit, batch upload and export. Integrates with **Smithery.ai marketplace** for one-click community skill installation.
+
+<!-- 📷 Skills -->
+<p align="center">
+  <img src="images/screenshots/15-skills-market.png" alt="Skills" width="920" />
+</p>
+<p align="center"><sub>Skills — AI generation · ZIP import · Smithery marketplace</sub></p>
+
+<!-- 📷 Skill install -->
+<p align="center">
+  <img src="images/skill安装.png" alt="Skill install" width="920" />
+</p>
+<p align="center"><sub>Smithery.ai marketplace — search · categories · one-click install</sub></p>
+
+#### MCP tool management
+
+MCP (Model Context Protocol) lets agents call external tools. Lingxi supports stdio / SSE / HTTP connection methods, import/export config, and one-click enable/disable.
+
+<!-- 📷 MCP -->
+<p align="center">
+  <img src="images/screenshots/16-mcp.png" alt="MCP" width="920" />
+</p>
+<p align="center"><sub>MCP management — stdio / SSE / HTTP · config export</sub></p>
+
+#### Visual workflows
+
+Drag-and-drop node editor with 6 node types: prompt, conditional branch, loop, delay, code execution, output. Orchestrate complex tasks visually; agents follow the flow automatically.
+
+<!-- 📷 Workflow -->
+<p align="center">
+  <img src="images/screenshots/14-workflow.png" alt="Workflow" width="920" />
+</p>
+<p align="center"><sub>Visual workflow editor — drag nodes · connect · preview execution</sub></p>
+
+#### Scheduled tasks
+
+Let agents run tasks on a schedule: every N minutes/hours/daily/weekly/monthly/custom Cron. Supports stateful mode (agent remembers last run) and stateless mode. Desktop notifications on completion; view run history and jump to the corresponding session.
+
+<!-- 📷 Scheduled tasks -->
+<p align="center">
+  <img src="images/screenshots/18-scheduled-tasks.png" alt="Scheduled tasks" width="920" />
+</p>
+<p align="center"><sub>Scheduler — Cron · run history · desktop notifications · WS live badge</sub></p>
+
+#### IM connectors
+
+Connect agents to WeChat Work, DingTalk, and Feishu via webhooks, making your agents intelligent nodes in enterprise communications.
+
+<!-- 📷 IM connectors -->
+<p align="center">
+  <img src="images/screenshots/19-im-connector.png" alt="IM connectors" width="920" />
+</p>
+<p align="center"><sub>IM connectors — WeChat Work · DingTalk · Feishu</sub></p>
+
+---
+
+### ⚙️ Model providers · usage tracking
+
+#### Unified multi-model access
+
+Lingxi's built-in Bridge protocol layer lets you configure API keys and endpoints, then seamlessly use models from 14+ providers. Test connectivity and switch active profiles with one click.
+
+<!-- 📷 Providers -->
+<p align="center">
+  <img src="images/screenshots/17-providers.png" alt="Providers" width="920" />
+</p>
+<p align="center"><sub>API profiles — 14+ providers · connectivity test · one-click switch</sub></p>
+
+<!-- 📷 Provider list -->
+<p align="center">
+  <img src="images/llm.png" alt="Provider list" width="920" />
+</p>
+<p align="center"><sub>Supported model providers</sub></p>
+
+#### Usage & budget
+
+Per-conversation token usage and cost tracking with budget alerts. Non-official APIs use a local pricing table for fallback estimates (marked with "~").
+
+<!-- 📷 Usage -->
+<p align="center">
+  <img src="images/screenshots/20-usage.png" alt="Usage" width="920" />
+</p>
+<p align="center"><sub>Usage stats — token counts · cost estimates · budget alerts</sub></p>
+
+---
+
+### 🎨 6 themes · polished UI
+
+Lingxi ships with 6 carefully designed themes: **Light · Dark · Midnight · Cyber · Aurora · Cosmos**. All colors are driven by CSS variables — theme switches are instant.
+
+UI polish includes: bubble corner radii with shadow/hover micro-interactions, ultra-thin custom scrollbars, three-dot wave connection animations, enhanced empty states, and AnimatePresence page transitions.
+
+<!-- 📷 Themes (screenshot needed: appearance settings or 2×3 theme mosaic) -->
+<p align="center">
+  <img src="images/screenshots/21-themes.png" alt="Themes" width="920" />
+</p>
+<p align="center"><sub>6 themes — Light · Dark · Midnight · Cyber · Aurora · Cosmos</sub></p>
+
+---
+
+### 🔐 Long-term memory · login · security
+
+**Long-term memory**: persists across sessions, isolated per agent, auto/manual addition, category management, clear and export.
+
+**SSO login**: first-launch login page supporting WeChat / QQ / Google / DingTalk / Douyin OAuth + guest mode. Electron Loopback OAuth (temp local HTTP server + system browser redirect) — no public callback URL needed.
+
+**Security hardening**: WebSocket origin check, CORS middleware, request body size limit, rate limiter, graceful shutdown (os.Signal + timeout context).
+
+---
+
+### 🎬 More screenshots
+
+<table>
+<tr>
+<td width="50%">
+
+<p align="center">
+  <img src="images/agent ppt创作.png" alt="Agent PPT creation" width="440" />
+</p>
+<p align="center"><sub>Agent long task — PPT creation in action</sub></p>
+
+</td>
+<td width="50%">
+
+<p align="center">
+  <img src="images/规划推理.png" alt="Planning reasoning" width="440" />
+</p>
+<p align="center"><sub>Planning mode — intermediate reasoning</sub></p>
+
+</td>
+</tr>
+<tr>
+<td width="50%">
+
+<p align="center">
+  <img src="images/Agent 对话请求提问.png" alt="Start A2A" width="440" />
+</p>
+<p align="center"><sub>Nexus — initiating an agent conversation invite</sub></p>
+
+</td>
+<td width="50%">
+
+<p align="center">
+  <img src="images/Agent对话接收请求.png" alt="Receive A2A" width="440" />
+</p>
+<p align="center"><sub>Nexus — receiver picks an agent to respond</sub></p>
+
+</td>
+</tr>
+</table>
 
 ---
 
 ## 🏗️ Architecture
 
 ```
-┌──────────────────────────────────────────────────────────┐
-│                      Electron 36                          │
-│   Desktop shell · Window mgmt · safeStorage · OTA update  │
-├───────────────────────────┬──────────────────────────────┤
-│      React 19 + Vite 8    │      Go 1.24 + Gin 1.10     │
-│   Tailwind CSS 3.4        │   SQLite (pure Go WASM)      │
-│   Zustand 5 · Motion 12   │   WebSocket · mDNS · Signal  │
-│   6 themes · virtual scroll│   70+ APIs · scheduler       │
-│   prism syntax highlight   │   IM connectors · Bridge     │
-│                            │   Evolution engine · Memory   │
-└───────────────────────────┴──────────────────────────────┘
-              Bundled runtimes (no install required)
-     Node.js · whisper.cpp · Claude CLI · LiteLLM Bridge
+┌──────────────────────────────────────────────────────────────┐
+│                      Electron 36 shell                        │
+│  Window mgmt · Splash · safeStorage · Capture · Spotlight     │
+├─────────────────────────────┬────────────────────────────────┤
+│   React 19 + Vite 8         │    Go 1.24 + Gin + SQLite       │
+│   Tailwind CSS · Zustand     │    WebSocket · mDNS · signaling │
+│   Framer Motion · 6 themes   │    Vectors · evolution · groups │
+│   Virtual scroll · React.lazy│    Behavior engine · Screen Agent│
+└─────────────────────────────┴────────────────────────────────┘
+         Bundled: Node.js · whisper.cpp · Claude CLI · Bridge
 ```
 
-| Layer | Tech | Purpose |
-|-------|------|---------|
-| 🖥️ Shell | Electron 36 | Window management · safeStorage · screenshots · auto-update |
-| 🎨 Frontend | React 19 + Vite 8 + Tailwind 3.4 | 6 themes · Zustand · Framer Motion |
-| ⚙️ Backend | Go 1.24 + Gin + SQLite | 70+ APIs · WebSocket · mDNS · scheduler · evolution engine |
-| 🔊 Voice | whisper.cpp (Metal) | Offline ASR · ggml-base |
-| 🔄 Router | LiteLLM / llm-bridge | Anthropic ↔ OpenAI protocol translation |
+| Layer | Stack |
+|-------|-------|
+| **Desktop** | Electron 36 · electron-builder · auto-update |
+| **Frontend** | React 19 · Vite 8 · Tailwind 3.4 · Zustand 5 · Framer Motion 12 · Recharts |
+| **Backend** | Go 1.24 · Gin 1.10 · ncruces/go-sqlite3 (pure Go, no CGO) · Gorilla WebSocket |
+| **AI runtime** | Claude CLI · LiteLLM / llm-bridge protocol translation · whisper.cpp offline ASR |
+| **Vector engine** | Pure Go cosine similarity · 768-dim embeddings · BM25 + RRF hybrid retrieval |
+| **Network** | mDNS LAN discovery · WebSocket signaling · HTTP/WAN Transport |
 
 ---
 
-## 📥 Quick Start
+## 📥 Quick start
 
 ### macOS (Apple Silicon)
 
 1. Download `.dmg` from [Releases](https://github.com/OdysseyFather/lingxi/releases)
-2. Double-click to install, drag to Applications
-3. If macOS says "cannot be verified": `xattr -cr "/Applications/灵犀.app"`
-4. Settings → Providers, configure at least one API key
-5. Start chatting!
+2. Drag to Applications
+3. If macOS says it can't be verified: `xattr -cr "/Applications/灵犀.app"`
+4. Launch → **Settings → Providers** → add at least one API key
+5. Create or pick an agent, start chatting
 
-### Build from Source
+### Windows
+
+Download `灵犀 Setup x.x.x.exe` (installer) or `灵犀 x.x.x.exe` (portable). Configure providers locally.
+
+### Build from source
 
 ```bash
-# Prerequisites: Node.js >= 20.19, Go >= 1.24
+# Prerequisites: Node.js >= 20.19 · Go >= 1.24
 git clone https://github.com/OdysseyFather/lingxi.git
-cd lingxi && ./build-desktop.sh
+cd lingxi
+
+# Build all (macOS + Windows)
+./build-desktop.sh
+
+# macOS only
+./build-desktop.sh mac
+
+# Windows only (cross-compile)
+./build-desktop.sh win
+```
+
+Build output in `dist-electron/`:
+
+```
+dist-electron/
+├── mac-arm64/灵犀.app          # Run directly
+├── 灵犀-{version}-arm64.dmg    # macOS installer
+├── 灵犀 Setup {version}.exe    # Windows installer
+└── 灵犀 {version}.exe          # Windows portable
 ```
 
 <details>
-<summary><b>Development mode →</b></summary>
-<br/>
+<summary><b>Development mode (three terminals)</b></summary>
 
 ```bash
-# Terminal 1: Frontend (hot reload)
-cd frontend-desktop && npm install && npm run dev
+# Terminal 1: Frontend with hot reload
+cd frontend-desktop && npm install && npm run dev   # :5173
 
 # Terminal 2: Go backend
-cd backend-desktop && go run .
+cd backend-desktop && go run .                      # :3001
 
-# Terminal 3: Electron
+# Terminal 3: Electron shell
 cd electron && npm install && npm start
 ```
+
+</details>
+
+<details>
+<summary><b>Troubleshooting</b></summary>
+
+| Issue | Solution |
+|-------|----------|
+| Vite build fails on Node version | Vite 8 requires Node.js ≥ 20.19; upgrade or download Node 22 |
+| npm EACCES permission error | Use temp cache: `NPM_CONFIG_CACHE=/tmp/npm-cache npm install` |
+| macOS says app can't be verified | `xattr -cr "/Applications/灵犀.app"` |
+| Go build fails | Ensure Go ≥ 1.24; run `go mod tidy` and retry |
 
 </details>
 
@@ -593,30 +752,25 @@ cd electron && npm install && npm start
 
 ## 📜 License
 
-This project is licensed under a **Personal Use and Educational License**. It is permitted for personal learning, research, and non-commercial purposes only. **Commercial use of any kind is strictly prohibited** (including but not limited to integration into commercial products, SaaS services, commercial deployment, etc.). Violations will be subject to legal action.
-
-See [LICENSE](LICENSE) for details. For commercial licensing, contact the copyright holder via GitHub.
+**Personal use and educational license only** — no commercial use. See [LICENSE](LICENSE).
 
 ---
 
-## ☕ Support the Project
+## ☕ Support
 
-> Open source is hard work. If Lingxi helps you, consider buying the author a coffee. Your support keeps the project alive and evolving.
+If Lingxi helps you, consider starring the repo or leaving a tip to support continued development.
 
 <p align="center">
-  <img src="images/打赏.png" alt="WeChat Pay" width="300" />
-  <br/><br/>
-  <sub>Scan with WeChat to donate · Every bit of support is appreciated</sub>
+  <img src="images/打赏.png" alt="WeChat Pay" width="280" />
+  <br/><sub>Scan to tip · support ongoing development</sub>
 </p>
 
 ---
 
 <p align="center">
-  <br/>
   <img src="logo.jpg" width="48" alt="Lingxi" />
   <br/><br/>
-  <strong>Lingxi</strong> — Making AI your work partner, not just a chatbot.<br/>
-  <sub>Built with ❤️ by the Lingxi community</sub>
+  <strong>Lingxi</strong> — AI as a work partner, not just a chatbot.
   <br/><br/>
-  If you find this valuable, please <a href="https://github.com/OdysseyFather/lingxi">Star</a> us!
+  <sub>Please <a href="https://github.com/OdysseyFather/lingxi">star ⭐</a> if this helps you</sub>
 </p>

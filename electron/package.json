@@ -1,6 +1,6 @@
 {
   "name": "lingxi-agent",
-  "version": "1.0.38",
+  "version": "1.0.70",
   "description": "灵犀 AI 助手",
   "main": "main.js",
   "private": true,
@@ -27,6 +27,11 @@
       "main.js",
       "preload.js",
       "splash.html",
+      "spotlight.js",
+      "spotlight.html",
+      "context-sensor.js",
+      "clipboard-monitor.js",
+      "screen-controller.js",
       "assets/**"
     ],
     "extraResources": [

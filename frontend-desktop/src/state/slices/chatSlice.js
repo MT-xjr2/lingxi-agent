@@ -77,6 +77,20 @@ export const createChatSlice = (set, get) => ({
   evolutionActivity: [],
   evolutionProgress: null,
   evolutionResults: [],
+  screenAgentMode: false,
+  screenAgentAnalyzing: false,
+  screenAgentResult: null,
+  screenAgentPlan: null,
+  screenAgentExecuting: false,
+  screenAgentStepIndex: 0,
+  screenAgentTotalSteps: 0,
+  screenAgentCurrentStep: null,
+  screenAgentConfirmNeeded: null,
+
+  // 定时任务运行状态：{ [task_id]: { task_id, task_name, session_id, run_id, started_at } }
+  runningScheduledTasks: {},
+  // 最近完成的定时任务（最多 30 条）
+  scheduledTaskHistory: [],
 
   handleWSEvent: (msg) => {
     const { event, data, sessionId } = msg;
@@ -308,7 +322,9 @@ export const createChatSlice = (set, get) => ({
           if (suggestions.length > 0) set({ suggestedReplies: suggestions });
         }
         if (state.activeSessionId) {
-          api.listMessages(state.activeSessionId).then((m) => set({ messages: m })).catch(() => {});
+          api.listMessages(state.activeSessionId).then((m) => {
+            set({ messages: m });
+          }).catch(() => {});
         }
         break;
       }
@@ -341,6 +357,14 @@ export const createChatSlice = (set, get) => ({
           }, delay);
         }
         set({ evolutionProgress: { ...info, ts: Date.now() } });
+        break;
+      }
+      case 'evolution_scan_progress': {
+        const info = typeof payload === 'object' ? payload : {};
+        const evoLog = [...(state.evolutionActivity || [])];
+        evoLog.unshift({ ...info, ts: Date.now() });
+        if (evoLog.length > 50) evoLog.length = 50;
+        set({ evolutionActivity: evoLog });
         break;
       }
       case 'evolution_status': {
@@ -393,7 +417,284 @@ export const createChatSlice = (set, get) => ({
         }
         break;
       }
+      case 'screen_agent_plan_start': {
+        const info = typeof payload === 'object' ? payload : {};
+        set({
+          screenAgentExecuting: true,
+          screenAgentStepIndex: 0,
+          screenAgentTotalSteps: info.total_steps || 0,
+          screenAgentCurrentStep: null,
+          screenAgentConfirmNeeded: null,
+        });
+        break;
+      }
+      case 'screen_agent_step_start': {
+        const info = typeof payload === 'object' ? payload : {};
+        set({
+          screenAgentCurrentStep: {
+            step: info.step,
+            total: info.total,
+            description: info.description,
+            action: info.action,
+          },
+        });
+        break;
+      }
+      case 'screen_agent_confirm_needed': {
+        const info = typeof payload === 'object' ? payload : {};
+        set({ screenAgentConfirmNeeded: info });
+        break;
+      }
+      case 'screen_agent_step_done': {
+        const info = typeof payload === 'object' ? payload : {};
+        set({
+          screenAgentStepIndex: info.step || ((state.screenAgentStepIndex || 0) + 1),
+          screenAgentCurrentStep: null,
+          screenAgentConfirmNeeded: null,
+        });
+        if (info.status === 'failed') {
+          set({ screenAgentExecuting: false });
+          state.pushNotification({ title: 'Screen Agent 操作失败', body: info.error || '' });
+        }
+        if (info.status === 'cancelled') {
+          set({ screenAgentExecuting: false });
+        }
+        break;
+      }
+      case 'screen_agent_execute': {
+        const info = typeof payload === 'object' ? payload : {};
+        if (window.electronAPI?.screenAgent && info.action) {
+          try {
+            const actionObj = typeof info.action === 'string' ? JSON.parse(info.action) : info.action;
+            window.electronAPI.screenAgent.executeAction(actionObj).then((result) => {
+              api.screenAgentStepResult({
+                action_id: info.action_id,
+                status: result?.success ? 'success' : 'failed',
+                error_msg: result?.error || '',
+                screenshot_after: '',
+              }).catch(() => {});
+            }).catch((err) => {
+              api.screenAgentStepResult({
+                action_id: info.action_id,
+                status: 'failed',
+                error_msg: err.message || 'Unknown error',
+                screenshot_after: '',
+              }).catch(() => {});
+            });
+          } catch (e) {
+            api.screenAgentStepResult({
+              action_id: info.action_id,
+              status: 'failed',
+              error_msg: e.message || 'Parse error',
+              screenshot_after: '',
+            }).catch(() => {});
+          }
+        }
+        break;
+      }
+      case 'screen_agent_plan_done': {
+        set({
+          screenAgentExecuting: false,
+          screenAgentCurrentStep: null,
+          screenAgentConfirmNeeded: null,
+        });
+        state.pushNotification({ title: 'Screen Agent', body: '操作计划执行完毕' });
+        break;
+      }
+      case 'screen_agent_plan_abort':
+      case 'screen_agent_abort': {
+        set({
+          screenAgentExecuting: false,
+          screenAgentAnalyzing: false,
+          screenAgentStepIndex: 0,
+          screenAgentCurrentStep: null,
+          screenAgentConfirmNeeded: null,
+        });
+        break;
+      }
+      case 'group_message': {
+        const info = typeof payload === 'object' ? payload : null;
+        if (info) state.applyGroupMessage(info);
+        break;
+      }
+      case 'group_stream_token':
+      case 'group_stream_token_remote': {
+        const info = typeof payload === 'object' ? payload : null;
+        if (info) {
+          if (info.event === 'stream_start' || info.event === 'stream_done') {
+            console.debug('[group stream]', info.event, info.sender_agent_name);
+          }
+          state.applyGroupStreamToken(info);
+        }
+        break;
+      }
+      case 'group_member_joined':
+      case 'group_member_left':
+      case 'group_status_change': {
+        state.refreshGroupChats();
+        state.refreshActiveGroupRoom();
+        break;
+      }
+      case 'group_invite_received': {
+        const info = typeof payload === 'object' ? payload : null;
+        if (info) {
+          state.enqueueGroupInvite(info);
+          state.refreshGroupChats();
+          state.pushNotification({ title: '收到群聊邀请', body: `${info.host_nickname || '某 peer'}：${info.topic || '(无主题)'}` });
+        }
+        break;
+      }
+      case 'group_message_recalled': {
+        const info = typeof payload === 'object' ? payload : null;
+        if (info) state.applyGroupRecall?.(info);
+        break;
+      }
+      case 'group_agent_typing': {
+        const info = typeof payload === 'object' ? payload : null;
+        if (info) state.applyGroupAgentTyping?.(info);
+        break;
+      }
+      case 'scheduled_task_started': {
+        const info = typeof payload === 'object' ? payload : {};
+        const tid = info.task_id;
+        if (!tid) break;
+        const next = { ...(state.runningScheduledTasks || {}) };
+        next[tid] = { ...info, ts: Date.now() };
+        set({ runningScheduledTasks: next });
+        break;
+      }
+      case 'scheduled_task_done': {
+        const info = typeof payload === 'object' ? payload : {};
+        const tid = info.task_id;
+        if (!tid) break;
+        const running = { ...(state.runningScheduledTasks || {}) };
+        delete running[tid];
+        const history = [{ ...info, ts: Date.now() }, ...(state.scheduledTaskHistory || [])].slice(0, 30);
+        set({ runningScheduledTasks: running, scheduledTaskHistory: history });
+        break;
+      }
       default: break;
+    }
+  },
+
+  toggleScreenAgentMode: () => {
+    const mode = !get().screenAgentMode;
+    set({ screenAgentMode: mode, screenAgentResult: null, screenAgentPlan: null });
+  },
+
+  screenAgentAnalyze: async (instruction) => {
+    const sid = get().activeSessionId;
+    if (!sid) return;
+    set({ screenAgentAnalyzing: true, screenAgentResult: null });
+    try {
+      let screenshot = null;
+      let context = {};
+      if (window.electronAPI?.screenAgent) {
+        const cap = await window.electronAPI.screenAgent.capture();
+        screenshot = cap.data;
+        context = await window.electronAPI.screenAgent.getContext();
+      } else {
+        set({ screenAgentAnalyzing: false });
+        get().pushNotification({ title: 'Screen Agent', body: '需要桌面应用才能使用屏幕操控' });
+        return;
+      }
+      const result = await api.screenAgentAnalyze({
+        screenshot,
+        context: {
+          app_name: context.appName || '',
+          window_title: context.windowTitle || '',
+          url: context.url || '',
+          context_type: context.contextType || '',
+          cursor_x: context.cursorX || 0,
+          cursor_y: context.cursorY || 0,
+          screen_width: context.screenWidth || 0,
+          screen_height: context.screenHeight || 0,
+          scale_factor: context.scaleFactor || 1,
+        },
+        instruction: instruction || '',
+        session_id: sid,
+      });
+      set({ screenAgentResult: { analysis: result.analysis, screenshot, timestamp: Date.now() }, screenAgentAnalyzing: false });
+    } catch (e) {
+      set({ screenAgentAnalyzing: false });
+      get().pushNotification({ title: 'Screen Agent 分析失败', body: e.message });
+    }
+  },
+
+  screenAgentMakePlan: async (instruction) => {
+    const sid = get().activeSessionId;
+    if (!sid) return;
+    set({ screenAgentAnalyzing: true, screenAgentPlan: null });
+    try {
+      let screenshot = null;
+      let context = {};
+      if (window.electronAPI?.screenAgent) {
+        const cap = await window.electronAPI.screenAgent.capture();
+        screenshot = cap.data;
+        context = await window.electronAPI.screenAgent.getContext();
+      } else {
+        set({ screenAgentAnalyzing: false });
+        return;
+      }
+      const result = await api.screenAgentPlan({
+        screenshot,
+        context: {
+          app_name: context.appName || '',
+          window_title: context.windowTitle || '',
+          screen_width: context.screenWidth || 0,
+          screen_height: context.screenHeight || 0,
+        },
+        instruction,
+        session_id: sid,
+      });
+      set({
+        screenAgentPlan: { steps: result.steps || [], rawPlan: result.raw_plan, screenshot, timestamp: Date.now() },
+        screenAgentAnalyzing: false,
+      });
+    } catch (e) {
+      set({ screenAgentAnalyzing: false });
+      get().pushNotification({ title: 'Screen Agent 规划失败', body: e.message });
+    }
+  },
+
+  screenAgentExecuteStep: async (actionJson) => {
+    const sid = get().activeSessionId;
+    if (!sid) return;
+    try {
+      await api.screenAgentStep({ session_id: sid, action: actionJson });
+    } catch (e) {
+      get().pushNotification({ title: '操作执行失败', body: e.message });
+    }
+  },
+
+  screenAgentExecutePlan: async (steps, autoMode = false) => {
+    const sid = get().activeSessionId;
+    if (!sid || !steps?.length) return;
+    try {
+      await api.screenAgentExecutePlan({ session_id: sid, steps, auto_mode: autoMode });
+    } catch (e) {
+      get().pushNotification({ title: '执行计划失败', body: e.message });
+    }
+  },
+
+  screenAgentConfirmAction: async (actionId, confirmed) => {
+    const sid = get().activeSessionId;
+    if (!sid) return;
+    set({ screenAgentConfirmNeeded: null });
+    try {
+      await api.screenAgentConfirm({ session_id: sid, action_id: actionId, confirmed });
+    } catch (e) {
+      get().pushNotification({ title: '确认失败', body: e.message });
+    }
+  },
+
+  screenAgentAbort: async () => {
+    const sid = get().activeSessionId;
+    if (!sid) return;
+    set({ screenAgentExecuting: false, screenAgentAnalyzing: false, screenAgentConfirmNeeded: null });
+    await api.screenAgentAbort(sid).catch(() => {});
+    if (window.electronAPI?.screenAgent) {
+      await window.electronAPI.screenAgent.abort().catch(() => {});
     }
   },
 

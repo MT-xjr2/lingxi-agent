@@ -8,17 +8,28 @@ import { ChatView } from '../chat/ChatView';
 import { AgentStatePill } from '../chat/AgentStatePill';
 import { ToastStack, Modal, Button } from './primitives';
 
-const SettingsPage = lazy(() => import('../settings/SettingsPage').then(m => ({ default: m.SettingsPage })));
-const SkillsPage = lazy(() => import('../SkillsPage'));
-const KnowledgePage = lazy(() => import('../KnowledgePage'));
-const IMConnectorPage = lazy(() => import('../IMConnectorPage'));
-const MCPPage = lazy(() => import('../MCPPage'));
-const AgentFactoryPage = lazy(() => import('../AgentFactoryPage'));
-const ScheduledTasksPage = lazy(() => import('../ScheduledTasksPage'));
-const WorkflowPage = lazy(() => import('../WorkflowPage'));
-const NexusPage = lazy(() => import('../nexus/NexusPage'));
-const EvolutionPage = lazy(() => import('../EvolutionPage'));
-const LoginPage = lazy(() => import('../LoginPage'));
+function lazyRetry(importFn, retries = 3) {
+  return lazy(() => {
+    const attempt = (remaining) =>
+      importFn().catch((err) => {
+        if (remaining <= 0) throw err;
+        return new Promise((resolve) => setTimeout(resolve, 500)).then(() => attempt(remaining - 1));
+      });
+    return attempt(retries);
+  });
+}
+
+const SettingsPage = lazyRetry(() => import('../settings/SettingsPage').then(m => ({ default: m.SettingsPage })));
+const SkillsPage = lazyRetry(() => import('../SkillsPage'));
+const KnowledgePage = lazyRetry(() => import('../KnowledgePage'));
+const IMConnectorPage = lazyRetry(() => import('../IMConnectorPage'));
+const MCPPage = lazyRetry(() => import('../MCPPage'));
+const AgentFactoryPage = lazyRetry(() => import('../AgentFactoryPage'));
+const ScheduledTasksPage = lazyRetry(() => import('../ScheduledTasksPage'));
+const WorkflowPage = lazyRetry(() => import('../WorkflowPage'));
+const NexusPage = lazyRetry(() => import('../nexus/NexusPage'));
+const EvolutionPage = lazyRetry(() => import('../EvolutionPage'));
+const LoginPage = lazyRetry(() => import('../LoginPage'));
 import EvolutionProgressPanel from './EvolutionProgressPanel';
 import { cn } from './cn';
 import { MessageSquare, Settings as SettingsIcon, Brain, BookOpen, MessageCircle, Plug, Sparkles, PanelLeftClose, PanelLeftOpen, Clock, Workflow, Globe, LogOut, User, UserPlus, Check, X, Dna } from 'lucide-react';
@@ -31,6 +42,7 @@ const SHORTCUTS = [
   { keys: ['⌘', ','], desc: '打开设置' },
   { keys: ['⌘', '/'], desc: '显示快捷键面板' },
   { keys: ['⌘', '⇧', 'S'], desc: '截屏到输入框' },
+  { keys: ['⌘', '⇧', 'Space'], desc: '唤出 Spotlight' },
   { keys: ['Enter'], desc: '发送消息' },
   { keys: ['Shift', 'Enter'], desc: '换行' },
   { keys: ['/'], desc: '唤起斜杠命令' },
@@ -43,6 +55,39 @@ function PageFallback() {
       <div className="w-5 h-5 border-2 border-[color:var(--accent)] border-t-transparent rounded-full animate-spin" />
     </div>
   );
+}
+
+import { Component } from 'react';
+class PageErrorBoundary extends Component {
+  constructor(props) {
+    super(props);
+    this.state = { hasError: false, error: null };
+  }
+  static getDerivedStateFromError(error) {
+    return { hasError: true, error };
+  }
+  componentDidCatch(error) {
+    const msg = error?.message || '';
+    if (msg.includes('dynamically imported module') || msg.includes('Failed to fetch')) {
+      setTimeout(() => window.location.reload(), 100);
+    }
+  }
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div className="flex-1 flex items-center justify-center">
+          <div className="text-center p-6">
+            <p className="text-sm text-[color:var(--text-soft)] mb-3">页面加载失败，正在刷新…</p>
+            <button
+              onClick={() => window.location.reload()}
+              className="px-4 py-2 rounded-lg bg-[color:var(--accent)] text-white text-sm"
+            >刷新页面</button>
+          </div>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
 }
 
 const pageMotion = {
@@ -70,6 +115,18 @@ const RIGHT_TABS = [
   { id: 'evolution', label: '进化', icon: Dna },
   { id: 'settings', label: '设置', icon: SettingsIcon },
 ];
+
+// 定时任务运行中徽章（右上角小红点 + 数量）
+function ScheduledRunningDot() {
+  const running = useStore((s) => s.runningScheduledTasks || {});
+  const count = Object.keys(running).length;
+  if (count === 0) return null;
+  return (
+    <span className="absolute -top-0.5 -right-0.5 min-w-[14px] h-[14px] px-1 rounded-full bg-[color:var(--accent)] text-white text-[9px] font-bold flex items-center justify-center shadow-[0_0_8px_var(--accent-glow)] animate-pulse">
+      {count}
+    </span>
+  );
+}
 
 function UserAvatarMenu({ user, onLogout, onSettings }) {
   const [open, setOpen] = useState(false);
@@ -369,10 +426,12 @@ export function AppShell() {
   // 未登录，显示登录页
   if (!isLoggedIn) {
     return (
-      <Suspense fallback={<PageFallback />}>
-        <LoginPage />
-        <ToastStack items={notifications} />
-      </Suspense>
+      <PageErrorBoundary>
+        <Suspense fallback={<PageFallback />}>
+          <LoginPage />
+          <ToastStack items={notifications} />
+        </Suspense>
+      </PageErrorBoundary>
     );
   }
 
@@ -451,6 +510,7 @@ export function AppShell() {
                   )}
                 >
                   <Icon size={15} />
+                  {tab.id === 'scheduled' && <ScheduledRunningDot />}
                 </button>
               );
             })}
@@ -489,6 +549,7 @@ export function AppShell() {
 
         {/* 主区 */}
         <main className="flex-1 flex flex-col min-h-0 relative">
+          <PageErrorBoundary>
           <Suspense fallback={<PageFallback />}>
           <AnimatePresence mode="wait">
             {view === 'chat' && (
@@ -548,6 +609,7 @@ export function AppShell() {
             )}
           </AnimatePresence>
           </Suspense>
+          </PageErrorBoundary>
         </main>
       </div>
 
@@ -616,7 +678,65 @@ export function AppShell() {
 
       <NexusNotificationOverlay />
       <EvolutionProgressPanel />
+      <ClipboardSuggestionBubble onSendToChat={(text) => {
+        setView('chat');
+        setTimeout(() => {
+          window.__clipboardPrefill = text;
+          window.dispatchEvent(new CustomEvent('clipboard-prefill', { detail: text }));
+        }, 100);
+      }} />
       <ToastStack items={notifications} />
     </div>
+  );
+}
+
+function ClipboardSuggestionBubble({ onSendToChat }) {
+  const [suggestion, setSuggestion] = useState(null);
+
+  useEffect(() => {
+    if (!window.electronAPI?.onClipboardSuggestion) return;
+    const unsub = window.electronAPI.onClipboardSuggestion((data) => {
+      setSuggestion(data);
+      setTimeout(() => setSuggestion(null), 6000);
+    });
+    return unsub;
+  }, []);
+
+  if (!suggestion) return null;
+
+  return (
+    <AnimatePresence>
+      <motion.div
+        key={suggestion.timestamp}
+        initial={{ opacity: 0, y: 20, x: 20 }}
+        animate={{ opacity: 1, y: 0, x: 0 }}
+        exit={{ opacity: 0, y: 20 }}
+        className="fixed bottom-20 right-6 z-[9999] max-w-sm"
+      >
+        <div className="bg-[color:var(--bg-elev)] border border-[color:var(--line)] rounded-2xl shadow-xl p-4 backdrop-blur-lg">
+          <div className="flex items-start gap-3">
+            <span className="text-xl shrink-0">{suggestion.icon}</span>
+            <div className="flex-1 min-w-0">
+              <div className="text-sm font-medium text-[color:var(--text)]">{suggestion.label}</div>
+              <div className="text-xs text-[color:var(--text-faint)] mt-0.5 line-clamp-2">{suggestion.preview}</div>
+              <div className="flex gap-2 mt-2">
+                <button
+                  onClick={() => { onSendToChat?.(suggestion.fullText); setSuggestion(null); }}
+                  className="px-3 py-1 text-xs font-medium rounded-lg bg-[color:var(--accent)] text-white hover:opacity-90 transition"
+                >
+                  {suggestion.action}
+                </button>
+                <button
+                  onClick={() => setSuggestion(null)}
+                  className="px-3 py-1 text-xs text-[color:var(--text-soft)] hover:text-[color:var(--text)] transition"
+                >
+                  忽略
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </motion.div>
+    </AnimatePresence>
   );
 }

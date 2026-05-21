@@ -69,6 +69,8 @@ export default function ScheduledTasksPage() {
   const agents = useStore(s => s.agents);
   const setView = useStore(s => s.setView);
   const setActiveSession = useStore(s => s.setActiveSession);
+  const runningTasks = useStore(s => s.runningScheduledTasks || {});
+  const taskHistory = useStore(s => s.scheduledTaskHistory || []);
 
   const loadTasks = useCallback(async () => {
     setLoading(true);
@@ -78,6 +80,14 @@ export default function ScheduledTasksPage() {
   }, []);
 
   useEffect(() => { loadTasks(); }, [loadTasks]);
+
+  // 任务完成后自动刷新列表
+  useEffect(() => {
+    if (taskHistory.length > 0) {
+      loadTasks();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [taskHistory.length]);
 
   const handleToggle = async (task) => {
     await api.toggleScheduledTask(task.id, !task.enabled).catch(() => {});
@@ -164,14 +174,29 @@ export default function ScheduledTasksPage() {
         <div className="space-y-3">
           {tasks.map(task => {
             const agent = agents.find(a => a.id === task.agent_id);
+            const runningInfo = runningTasks[task.id];
             return (
-              <Card key={task.id} className={cn('p-4 transition-all', !task.enabled && 'opacity-60')}>
+              <Card key={task.id} className={cn('p-4 transition-all', !task.enabled && 'opacity-60', runningInfo && 'border-[color:var(--accent)]/40 shadow-[0_0_24px_var(--accent-glow)]')}>
+                {runningInfo && (
+                  <div className="mb-3 flex items-center gap-2 text-xs px-3 py-2 rounded-lg bg-[color:var(--accent-soft)] text-[color:var(--accent)]">
+                    <Loader2 size={14} className="animate-spin" />
+                    <span className="font-medium">正在执行…</span>
+                    <button
+                      onClick={() => handleViewSession(runningInfo.session_id)}
+                      className="ml-auto hover:underline inline-flex items-center gap-1"
+                    >
+                      <ExternalLink size={12} /> 查看实时输出
+                    </button>
+                  </div>
+                )}
                 <div className="flex items-start gap-4">
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2">
                       <span className="text-base font-semibold truncate">{task.name}</span>
-                      {task.enabled ? (
-                        <Badge tone="success">运行中</Badge>
+                      {runningInfo ? (
+                        <Badge tone="accent">执行中</Badge>
+                      ) : task.enabled ? (
+                        <Badge tone="success">已启用</Badge>
                       ) : (
                         <Badge tone="warn">已暂停</Badge>
                       )}

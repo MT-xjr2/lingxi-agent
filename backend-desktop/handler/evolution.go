@@ -843,3 +843,13 @@ func mustJSON(v interface{}) string {
 	b, _ := json.Marshal(v)
 	return string(b)
 }
+
+// RunEvolutionAnalysisExternal 供 evolution scanner 等外部包调用，异步触发一次进化分析
+func RunEvolutionAnalysisExternal(agentID, sessionID int64, ctx, trigger string) {
+	go runEvolutionAnalysis(agentID, sessionID, ctx, trigger)
+}
+
+// BuildConversationContextExternal 供外部包构建会话上下文
+func BuildConversationContextExternal(sessionID, beforeMsgID int64) string {
+	return buildConversationContext(sessionID, beforeMsgID)
+}

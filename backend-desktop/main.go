@@ -15,10 +15,14 @@ import (
 	"lingxi-agent/config"
 	"lingxi-agent/connector"
 	"lingxi-agent/db"
+	"lingxi-agent/evolution"
+	"lingxi-agent/grouploop"
 	"lingxi-agent/handler"
 	"lingxi-agent/logger"
 	"lingxi-agent/nexus"
 	"lingxi-agent/scheduler"
+	"lingxi-agent/vectordb"
+	"lingxi-agent/watcher"
 
 	"github.com/gin-gonic/gin"
 )
@@ -27,6 +31,7 @@ func main() {
 	logger.Init()
 	cfg := config.Get()
 	db.Init()
+	vectordb.Init()
 	if cfg.DingTalk.ClientID != "" && cfg.DingTalk.ClientSecret != "" {
 		db.SeedDingTalkOAuth(cfg.DingTalk.ClientID, cfg.DingTalk.ClientSecret)
 	}
@@ -92,6 +97,7 @@ func main() {
 	api.POST("/chat", handler.Chat)
 	api.POST("/chat/batch", handler.BatchChat)
 	api.POST("/chat/abort", handler.AbortChat)
+	api.POST("/chat/quick", handler.QuickChat)
 	api.GET("/ws", handler.WsHandler)
 
 	// 挂起任务
@@ -103,6 +109,7 @@ func main() {
 	api.DELETE("/tasks/:id", handler.DeleteTask)
 
 	api.GET("/skills", handler.ListSkills)
+	api.POST("/skills/install-github", handler.InstallDotSkillHandler)
 	api.POST("/skills/upload", handler.UploadSkill)
 	api.POST("/skills/batch-upload", handler.BatchUploadSkill)
 	api.POST("/skills/generate/stream", handler.GenerateSkillStream)
@@ -132,6 +139,16 @@ func main() {
 	api.POST("/knowledge/categories", handler.CreateKnowledgeCategory)
 	api.DELETE("/knowledge/categories/:id", handler.DeleteKnowledgeCategory)
 
+	// 向量知识库（深度 RAG）
+	api.POST("/knowledge/reindex", handler.ReindexKnowledge)
+	api.GET("/knowledge/index-status", handler.GetIndexStatus)
+	api.GET("/knowledge/search", handler.SemanticSearch)
+	api.GET("/knowledge/watched-dirs", handler.ListWatchedDirs)
+	api.POST("/knowledge/watched-dirs", handler.AddWatchedDir)
+	api.DELETE("/knowledge/watched-dirs/:id", handler.RemoveWatchedDir)
+	api.GET("/knowledge/embedding-config", handler.GetEmbeddingConfig)
+	api.PUT("/knowledge/embedding-config", handler.SetEmbeddingConfig)
+
 	// IM 连接器管理
 	api.GET("/im-connectors", handler.ListIMConnectors)
 	api.POST("/im-connectors", handler.UpsertIMConnector)
@@ -158,10 +175,19 @@ func main() {
 	api.POST("/mcp/:id/toggle", handler.ToggleMCPServer)
 	api.GET("/mcp/export", handler.ExportMCPConfig)
 
-	// 智能体工厂
+	// 智能体工厂（固定路径须在 :id 之前注册）
 	api.GET("/agents", handler.ListAgents)
-	api.GET("/agents/:id", handler.GetAgent)
 	api.POST("/agents", handler.UpsertAgent)
+	api.POST("/agents/upload-avatar", handler.UploadAgentAvatar)
+	api.GET("/agents/distill/status", handler.GetDistillStatus)
+	api.POST("/agents/distill/stream", handler.DistillAgentStream)
+	api.POST("/agents/distill/apply", handler.ApplyDistillResult)
+	api.GET("/agents/distill/records", handler.ListDistillRecords)
+	api.GET("/agents/distill/records/:id", handler.GetDistillRecordHandler)
+	api.DELETE("/agents/distill/records/:id", handler.DeleteDistillRecordHandler)
+	api.POST("/agents/distill/records/:id/apply", handler.ApplyDistillRecordHandler)
+	api.GET("/agents/distill/records/:id/files/*filepath", handler.DownloadDistillRecordFile)
+	api.GET("/agents/:id", handler.GetAgent)
 	api.DELETE("/agents/:id", handler.DeleteAgent)
 	api.POST("/sessions/:id/agent", handler.SetSessionAgent)
 
@@ -181,6 +207,19 @@ func main() {
 	api.DELETE("/memories/:id", handler.DeleteMemory)
 	api.POST("/messages/:id/pin", handler.ToggleMessagePin)
 
+	// Screen Agent（屏幕操控）
+	api.POST("/screen-agent/analyze", handler.ScreenAgentAnalyze)
+	api.POST("/screen-agent/plan", handler.ScreenAgentPlan)
+	api.POST("/screen-agent/step", handler.ScreenAgentExecuteStep)
+	api.POST("/screen-agent/step-result", handler.ScreenAgentStepResult)
+	api.POST("/screen-agent/abort", handler.ScreenAgentAbort)
+	api.POST("/screen-agent/reset", handler.ScreenAgentReset)
+	api.POST("/screen-agent/execute-plan", handler.ScreenAgentExecutePlan)
+	api.POST("/screen-agent/confirm", handler.ScreenAgentConfirmStep)
+	api.GET("/screen-agent/actions", handler.ListScreenActionsHandler)
+	api.GET("/agents/:id/screen-config", handler.GetAgentScreenConfigHandler)
+	api.PUT("/agents/:id/screen-config", handler.SetAgentScreenConfigHandler)
+
 	// 语音识别（转发到 OpenAI 兼容 Whisper API）
 	api.POST("/transcribe", handler.TranscribeAudio)
 
@@ -197,6 +236,34 @@ func main() {
 	nexusAPI.POST("/conversation/stream-token", handler.NexusReceiveStreamToken)
 	nexusAPI.GET("/settings", handler.GetNexusSettings)
 	nexusAPI.PUT("/settings", handler.UpdateNexusSettings)
+
+	// ── 群聊 Nexus 接收侧 ───────────────────────────────────────
+	nexusAPI.POST("/group/invite", handler.NexusReceiveGroupInvite)
+	nexusAPI.POST("/group/join_ack", handler.NexusReceiveGroupJoinAck)
+	nexusAPI.POST("/group/message", handler.NexusReceiveGroupMessage)
+	nexusAPI.POST("/group/leave", handler.NexusReceiveGroupLeave)
+	nexusAPI.POST("/group/stream_token", handler.NexusReceiveGroupStreamToken)
+	nexusAPI.POST("/group/recall", handler.NexusReceiveGroupRecall)
+
+	// ── 群聊 HTTP API ─────────────────────────────────────────
+	api.GET("/group-chats", handler.ListGroupChats)
+	api.POST("/group-chats", handler.CreateGroupChat)
+	api.POST("/group-chats/upload", handler.UploadGroupImage)
+	api.GET("/group-chats/:id", handler.GetGroupChatDetail)
+	api.GET("/group-chats/:id/messages", handler.ListGroupMessagesPagedHandler)
+	api.POST("/group-chats/:id/post", handler.PostGroupMessage)
+	api.POST("/group-chats/:id/messages/:msgId/recall", handler.RecallGroupMessageHandler)
+	api.POST("/group-chats/:id/leave", handler.LeaveGroupChat)
+	api.POST("/group-chats/:id/pause", handler.PauseGroupChat)
+	api.POST("/group-chats/:id/resume", handler.ResumeGroupChat)
+	api.POST("/group-chats/:id/terminate", handler.TerminateGroupChat)
+	api.POST("/group-chats/:id/accept", handler.AcceptGroupInvite)
+	api.POST("/group-chats/:id/reject", handler.RejectGroupInvite)
+	api.DELETE("/group-chats/:id", handler.DeleteGroupChatHandler)
+
+	// ── 群聊 Agent 人格 ──────────────────────────────────────
+	api.GET("/agents/:id/personality", handler.GetAgentPersonality)
+	api.PUT("/agents/:id/personality", handler.UpsertAgentPersonality)
 
 	api.GET("/peers", handler.ListPeers)
 	// ── 广域网 (WAN) ───────────────────────────────────────────
@@ -226,6 +293,8 @@ func main() {
 	api.GET("/evolution/stats", handler.GetEvolutionStats)
 	api.DELETE("/evolution/logs/:id", handler.DeleteEvolutionLog)
 	api.POST("/evolution/logs/:id/revert", handler.RevertEvolutionLog)
+	api.GET("/evolution/scanner-config", handler.GetEvolutionScannerConfig)
+	api.PUT("/evolution/scanner-config", handler.UpdateEvolutionScannerConfig)
 
 	// Electron 启动时下发激活档案明文 token
 	api.POST("/runtime/active-secret", handler.SetActiveSecret)
@@ -242,10 +311,17 @@ func main() {
 		c.File(dist + "/index.html")
 	})
 
+	// 注入向量索引广播函数
+	vectordb.BroadcastFn = handler.BroadcastWSEvent
+
 	// 启动 Nexus Agent-to-Agent 通信服务
 	nexus.Init(handler.RunA2AStreamingTurn, handler.CreateA2ASession, handler.BroadcastWSEvent)
 	nexus.SetRelayHandler(buildRelayHandler(r))
 	nexus.Global.Start()
+
+	// 群聊常驻 Agent 协程
+	grouploop.Init(handler.SpeakInGroup)
+	grouploop.BootAll()
 
 	// 启动定时任务调度器
 	scheduler.Init(handler.RunClaudeSync, func(taskName, summary string) {
@@ -264,8 +340,15 @@ func main() {
 		}
 		payload, _ := json.Marshal(m)
 		handler.BroadcastWSEvent("desktop_notify", string(payload))
-	})
+	}, handler.BroadcastWSEvent)
 	scheduler.Start()
+
+	// 启动全局自我进化扫描器（兜底）
+	evolution.Init(handler.RunEvolutionAnalysisExternal, handler.BuildConversationContextExternal, handler.BroadcastWSEvent)
+	evolution.StartScanner()
+
+	// 启动文件监控
+	watcher.Start()
 
 	backupStop := make(chan struct{})
 	go handler.StartDailyBackup(backupStop)
@@ -292,8 +375,10 @@ func main() {
 	defer cancel()
 
 	close(backupStop)
+	watcher.Stop()
 	scheduler.Stop()
 	nexus.Global.Stop()
+	grouploop.StopAll()
 
 	if err := srv.Shutdown(ctx); err != nil {
 		slog.Error("server shutdown error", "err", err)

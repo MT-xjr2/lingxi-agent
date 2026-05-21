@@ -92,10 +92,11 @@ type Agent struct {
 }
 
 type SignalMessage struct {
-	Type string          `json:"type"`
-	From string          `json:"from,omitempty"`
-	To   string          `json:"to,omitempty"`
-	Data json.RawMessage `json:"data,omitempty"`
+	Type   string          `json:"type"`
+	From   string          `json:"from,omitempty"`
+	To     string          `json:"to,omitempty"`
+	ToList []string        `json:"to_list,omitempty"` // 多播目标列表（仅 relay_multi 使用）
+	Data   json.RawMessage `json:"data,omitempty"`
 }
 
 // ─── Hub 管理所有连接 ────────────────────────────────────────────
@@ -329,6 +330,35 @@ func handleWS(w http.ResponseWriter, r *http.Request) {
 				safeWrite(SignalMessage{
 					Type: "delivery_failed",
 					Data: jsonRaw(map[string]string{"to": msg.To, "reason": "peer_offline", "original_type": "relay"}),
+				})
+			}
+
+		case "relay_multi":
+			// 多播：把同一份 data 转发给 to_list 内的所有 peer，节省客户端往返
+			if peer == nil || len(msg.ToList) == 0 {
+				continue
+			}
+			msg.From = peer.InstanceID
+			failed := []string{}
+			for _, target := range msg.ToList {
+				if target == "" || target == peer.InstanceID {
+					continue
+				}
+				out := SignalMessage{
+					Type: "relay",
+					From: peer.InstanceID,
+					To:   target,
+					Data: msg.Data,
+				}
+				if err := hub.sendTo(target, out); err != nil {
+					failed = append(failed, target)
+				}
+			}
+			log.Printf("[ws] relay_multi from=%s targets=%d failed=%d", peer.InstanceID, len(msg.ToList), len(failed))
+			if len(failed) > 0 {
+				safeWrite(SignalMessage{
+					Type: "delivery_failed",
+					Data: jsonRaw(map[string]interface{}{"to_list": failed, "reason": "peer_offline", "original_type": "relay_multi"}),
 				})
 			}
 

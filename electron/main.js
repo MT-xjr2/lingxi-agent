@@ -1,8 +1,11 @@
-const { app, BrowserWindow, ipcMain, shell, safeStorage, Menu, desktopCapturer, globalShortcut, nativeImage, dialog } = require('electron');
+const { app, BrowserWindow, ipcMain, shell, safeStorage, Menu, desktopCapturer, globalShortcut, nativeImage, dialog, screen } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const { spawn, execSync, exec } = require('child_process');
 const http = require('http');
+const spotlight = require('./spotlight');
+const clipboardMonitor = require('./clipboard-monitor');
+const screenController = require('./screen-controller');
 
 
 // Windows GPU 兼容性：部分机器 GPU 驱动有问题导致窗口白屏/不显示
@@ -235,9 +238,18 @@ function initClaudeConfig() {
     console.log('[electron] wrote isolated engine config');
   }
 
-  // 同步内置 skills
+  // 同步内置 skills（递归，支持 dot-skill 等多层目录）
   const skillsSrc = path.join(configSrc, 'skills');
   const skillsDst = path.join(claudeDir, 'skills');
+  const copyDirRecursive = (src, dst) => {
+    fs.mkdirSync(dst, { recursive: true });
+    for (const entry of fs.readdirSync(src, { withFileTypes: true })) {
+      const s = path.join(src, entry.name);
+      const d = path.join(dst, entry.name);
+      if (entry.isDirectory()) copyDirRecursive(s, d);
+      else fs.copyFileSync(s, d);
+    }
+  };
   if (fs.existsSync(skillsSrc)) {
     fs.mkdirSync(skillsDst, { recursive: true });
     for (const skillName of fs.readdirSync(skillsSrc)) {
@@ -245,10 +257,7 @@ function initClaudeConfig() {
       if (!fs.statSync(srcSkill).isDirectory()) continue;
       const dstSkill = path.join(skillsDst, skillName);
       if (!fs.existsSync(dstSkill)) {
-        fs.mkdirSync(dstSkill, { recursive: true });
-        for (const f of fs.readdirSync(srcSkill)) {
-          fs.copyFileSync(path.join(srcSkill, f), path.join(dstSkill, f));
-        }
+        copyDirRecursive(srcSkill, dstSkill);
         console.log('[electron] installed built-in skill:', skillName);
       }
     }
@@ -411,16 +420,36 @@ function startBackend() {
     windowsHide: true,
   });
 
-  backendProcess.stdout.on('data', (data) => {
-    console.log('[backend]', data.toString().trim());
-  });
+  const stdoutHandler = (data) => {
+    if (backendProcess) {
+      try {
+        console.log('[backend]', data.toString().trim());
+      } catch (e) {
+        // Ignore EPIPE errors when process has exited
+      }
+    }
+  };
 
-  backendProcess.stderr.on('data', (data) => {
-    console.error('[backend:err]', data.toString().trim());
-  });
+  const stderrHandler = (data) => {
+    if (backendProcess) {
+      try {
+        console.error('[backend:err]', data.toString().trim());
+      } catch (e) {
+        // Ignore EPIPE errors when process has exited
+      }
+    }
+  };
+
+  backendProcess.stdout.on('data', stdoutHandler);
+  backendProcess.stderr.on('data', stderrHandler);
 
   backendProcess.on('exit', (code, signal) => {
     console.log(`[electron] backend exited: code=${code} signal=${signal}`);
+    // Remove listeners to prevent EPIPE errors
+    if (backendProcess) {
+      backendProcess.stdout.removeListener('data', stdoutHandler);
+      backendProcess.stderr.removeListener('data', stderrHandler);
+    }
     backendProcess = null;
   });
 
@@ -817,25 +846,112 @@ ipcMain.handle('start-oauth', async (_event, provider) => {
   });
 });
 
-// ─── 屏幕截图 (desktopCapturer) ──────────────────────────────────
-ipcMain.handle('capture-screen', async () => {
+// ─── 可靠截屏（macOS 使用 screencapture 命令，回退 desktopCapturer）────
+async function reliableScreenCapture(region) {
+  const display = screen.getPrimaryDisplay();
+  const isMac = process.platform === 'darwin';
+
+  if (isMac) {
+    const tmpFile = path.join(app.getPath('temp'), `lingxi-sc-${Date.now()}.png`);
+    try {
+      if (region && region.x != null) {
+        const r = `${Math.round(region.x)},${Math.round(region.y)},${Math.round(region.x + region.w)},${Math.round(region.y + region.h)}`;
+        execSync(`screencapture -x -t png -R${r} "${tmpFile}"`, { timeout: 5000 });
+      } else {
+        execSync(`screencapture -x -t png "${tmpFile}"`, { timeout: 5000 });
+      }
+      const png = fs.readFileSync(tmpFile);
+      const img = nativeImage.createFromBuffer(png);
+      const size = img.getSize();
+      return {
+        data: png.toString('base64'),
+        mediaType: 'image/png',
+        width: size.width,
+        height: size.height,
+        screenWidth: display.size.width,
+        screenHeight: display.size.height,
+        scaleFactor: display.scaleFactor,
+      };
+    } catch (err) {
+      throw new Error(`截屏失败: ${err.message}`);
+    } finally {
+      try { fs.unlinkSync(tmpFile); } catch {}
+    }
+  }
+
+  // Windows / Linux 回退到 desktopCapturer
   try {
     const sources = await desktopCapturer.getSources({
       types: ['screen'],
       thumbnailSize: { width: 1920, height: 1080 },
     });
     if (!sources || !sources.length) {
-      throw new Error('截屏需要屏幕录制权限，请前往「系统设置 > 隐私与安全性 > 屏幕录制」中授权灵犀');
+      throw new Error('截屏失败：未获取到屏幕源');
     }
-    const img = sources[0].thumbnail;
+    let img = sources[0].thumbnail;
+    if (region && region.x != null) {
+      img = img.crop({
+        x: Math.round(region.x), y: Math.round(region.y),
+        width: Math.round(region.w), height: Math.round(region.h),
+      });
+    }
     const png = img.toPNG();
-    return { data: png.toString('base64'), mediaType: 'image/png' };
+    return {
+      data: png.toString('base64'),
+      mediaType: 'image/png',
+      width: img.getSize().width,
+      height: img.getSize().height,
+      screenWidth: display.size.width,
+      screenHeight: display.size.height,
+      scaleFactor: display.scaleFactor,
+    };
   } catch (err) {
-    if (err.message.includes('Failed to get sources') || err.message.includes('Not allowed')) {
-      throw new Error('截屏需要屏幕录制权限，请前往「系统设置 > 隐私与安全性 > 屏幕录制」中授权灵犀，然后重启应用');
-    }
-    throw err;
+    throw new Error(`截屏失败: ${err.message}`);
   }
+}
+
+// ─── 屏幕截图 IPC ──────────────────────────────────────────────────
+ipcMain.handle('capture-screen', async () => {
+  const result = await reliableScreenCapture();
+  return { data: result.data, mediaType: result.mediaType };
+});
+
+// ─── Screen Agent ─────────────────────────────────────────────────
+screenController.setCaptureScreenFn(reliableScreenCapture);
+
+ipcMain.handle('screen-agent-capture', async (_e, region) => {
+  return screenController.captureScreen(region);
+});
+
+ipcMain.handle('screen-agent-context', () => {
+  return screenController.getEnhancedContext();
+});
+
+ipcMain.handle('screen-agent-execute', async (_e, action) => {
+  return screenController.executeAction(action);
+});
+
+ipcMain.handle('screen-agent-execute-batch', async (_e, actions, stepDelay) => {
+  return screenController.executeActions(actions, stepDelay);
+});
+
+ipcMain.handle('screen-agent-abort', () => {
+  screenController.setAborted(true);
+  return { ok: true };
+});
+
+ipcMain.handle('screen-agent-reset', () => {
+  screenController.setAborted(false);
+  return { ok: true };
+});
+
+// ─── 剪贴板监控设置 ──────────────────────────────────────────────
+ipcMain.handle('clipboard-monitor-toggle', (_e, enabled) => {
+  clipboardMonitor.setEnabled(enabled);
+  return clipboardMonitor.isEnabled();
+});
+ipcMain.handle('clipboard-monitor-status', () => {
+  return clipboardMonitor.isEnabled();
 });
 
 // ─── 桌面通知 ─────────────────────────────────────────────────────
@@ -891,20 +1007,36 @@ app.whenReady().then(async () => {
     switchToApp();
   }
 
+  // 初始化 Spotlight
+  spotlight.setBackendPort(backendPort);
+  spotlight.registerIPC();
+  spotlight.registerShortcut();
+
+  // 启动剪贴板智能监控
+  clipboardMonitor.start(mainWindow);
+
+  // Screen Agent 紧急中止快捷键：Cmd+Shift+Esc → 立即中止所有操作
+  try {
+    globalShortcut.register('CommandOrControl+Shift+Escape', () => {
+      screenController.setAborted(true);
+      if (mainWindow) {
+        mainWindow.webContents.send('screen-agent-emergency-abort');
+      }
+      console.log('[electron] Screen Agent emergency abort triggered');
+    });
+  } catch (err) {
+    console.error('[electron] failed to register screen-agent abort shortcut:', err.message);
+  }
+
   // 注册全局截屏快捷键 Cmd+Shift+S → 截屏并推送到前端
   try {
     globalShortcut.register('CommandOrControl+Shift+S', async () => {
       if (!mainWindow) return;
       try {
-        const sources = await desktopCapturer.getSources({
-          types: ['screen'],
-          thumbnailSize: { width: 1920, height: 1080 },
-        });
-        if (!sources.length) return;
-        const png = sources[0].thumbnail.toPNG();
+        const result = await reliableScreenCapture();
         mainWindow.webContents.send('screenshot-captured', {
-          data: png.toString('base64'),
-          mediaType: 'image/png',
+          data: result.data,
+          mediaType: result.mediaType,
         });
       } catch (err) {
         console.error('[electron] screenshot error:', err.message);

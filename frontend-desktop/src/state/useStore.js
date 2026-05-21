@@ -21,6 +21,14 @@ export function initStore() {
   wsClient.connect();
   wsClient.on(handleWSEvent);
 
+  // Screen Agent 紧急中止监听
+  if (window.electronAPI?.screenAgent?.onEmergencyAbort) {
+    window.electronAPI.screenAgent.onEmergencyAbort(() => {
+      useStore.getState().screenAgentAbort();
+      useStore.getState().pushNotification({ title: 'Screen Agent', body: '已紧急中止所有操作 (⌘⇧Esc)' });
+    });
+  }
+
   checkAuth().then(() => {
     const { isLoggedIn } = useStore.getState();
     if (isLoggedIn) {
